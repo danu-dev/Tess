@@ -724,7 +724,7 @@ titleCorner.CornerRadius = UDim.new(0, 10)
 titleCorner.Parent = title
 
 local btnScroll = Instance.new("ScrollingFrame")
-btnScroll.Size = UDim2.new(1, 0, 0, guiHeight - 30 - 20 - logHeight - 32)
+btnScroll.Size = isMobile and UDim2.new(1, 0, 0, guiHeight - 36) or UDim2.new(1, 0, 0, guiHeight - 30 - 20 - logHeight - 32)
 btnScroll.Position = UDim2.new(0, 0, 0, 32)
 btnScroll.BackgroundTransparency = 1
 btnScroll.BorderSizePixel = 0
@@ -974,6 +974,16 @@ local function makeNumberBox(labelText, cfgKey, minV, maxV)
 end
 
 makeSection("PENGATURAN STEAL")
+
+if isMobile then
+    logTitle.Visible, logScroll.Visible, logBtnRow.Visible = false, false, false
+    makeButton("📋 Copy Log", Color3.fromRGB(60, 90, 160), function()
+        if setclipboard then
+            setclipboard(table.concat(LogBuffer, "\n"))
+            log("LOG", "Log disalin ✅")
+        end
+    end)
+end
 makeNumberBox("Jumlah Retry", "StealRetries", 1, 10)
 makeNumberBox("Radius Base", "HomeRadius", 10, 300)
 makeNumberBox("Kecepatan TP", "MoveStep", 4, 60)

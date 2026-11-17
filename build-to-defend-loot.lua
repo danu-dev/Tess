@@ -1,6 +1,10 @@
 --[[
-    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v6
+    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v7
     ========================================
+    v7:
+    ★ UI baru: modern, ringan, 5 tab (Steal, Filter, Player, Misc, Log)
+      — tab dibangun lazy, log hanya 1 TextLabel
+    ★ Filter rarity (Common..OG), jarak maks target, fallback OFF
     v6:
     ★ Fix UI lama ketumpuk — GUI lama dihapus dari SEMUA lokasi
       (gethui, CoreGui, PlayerGui) saat script jalan
@@ -236,8 +240,18 @@ end
 -- LOGGER
 --==================================================
 local LogBuffer = {}
-local logScroll = nil
-local logLabels = {}
+local logScroll, logLabel = nil, nil
+local logPending = false
+
+local function refreshLog()
+    logPending = false
+    if logLabel then
+        logLabel.Text = table.concat(LogBuffer, "\n", math.max(1, #LogBuffer - 39))
+        task.defer(function()
+            pcall(function() logScroll.CanvasPosition = Vector2.new(0, 1e6) end)
+        end)
+    end
+end
 
 local function log(tag, msg)
     local line = string.format("[%s][%s] %s", os.date("%H:%M:%S"), tag, tostring(msg))
@@ -246,26 +260,10 @@ local function log(tag, msg)
     if #LogBuffer > 200 then
         table.remove(LogBuffer, 1)
     end
-
-    if logScroll then
-        local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, -8, 0, 14)
-        lbl.BackgroundTransparency = 1
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.Font = Enum.Font.Code
-        lbl.TextSize = 11
-        lbl.TextColor3 = Color3.fromRGB(170, 255, 170)
-        lbl.Text = line
-        lbl.Parent = logScroll
-        table.insert(logLabels, lbl)
-        if #logLabels > 60 then
-            table.remove(logLabels, 1):Destroy()
-        end
-        task.defer(function()
-            pcall(function()
-                logScroll.CanvasPosition = Vector2.new(0, math.huge)
-            end)
-        end)
+    -- satu TextLabel saja, di-update paling cepat tiap 0.3 dtk (ringan)
+    if logLabel and not logPending then
+        logPending = true
+        task.delay(0.3, refreshLog)
     end
 end
 
@@ -738,7 +736,7 @@ local function debugPrompts()
 end
 
 --==================================================
--- GUI
+-- GUI v7 — modern & ringan (tab dibuat lazy, tanpa banyak instance)
 --==================================================
 local guiParent
 do
@@ -751,7 +749,6 @@ do
     end
 end
 
--- ★ Hapus GUI lama dari SEMUA lokasi (gethui / CoreGui / PlayerGui)
 local function destroyOldGui(name)
     local roots = {}
     pcall(function() table.insert(roots, gethui()) end)
@@ -767,476 +764,487 @@ local function destroyOldGui(name)
         end
     end
 end
-
-for _, name in ipairs({"BTDL_v6", "BTDL_v5", "BTDL_v4", "BTDL_v3", "BTDL_AllInOne", "StealTools"}) do
+for _, name in ipairs({"BTDL_v7", "BTDL_v6", "BTDL_v5", "BTDL_v4", "BTDL_v3", "BTDL_AllInOne", "StealTools"}) do
     destroyOldGui(name)
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "BTDL_v6"
+gui.Name = "BTDL_v7"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = guiParent
 
-local isMobile = UserInputService.TouchEnabled
-local viewport = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 400)
-local guiWidth  = isMobile and math.clamp(viewport.X * 0.75, 340, 460) or 400
-local guiHeight = isMobile and math.clamp(viewport.Y * 0.8, 210, 320) or 400
-local btnHeight = isMobile and 40 or 32
-local logHeight = isMobile and 60 or 100
-
--- drag universal (mouse + touch)
-local function makeDraggable(handle, target, onTap)
-    local dragging, startPos, startInput, moved = false, nil, nil, false
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging, moved = true, false
-            startPos, startInput = target.Position, input.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    if not moved and onTap then onTap() end
-                end
-            end)
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local d = input.Position - startInput
-            if d.Magnitude > 6 then moved = true end
-            if moved then
-                target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-            end
-        end
-    end)
-end
-
-local main = Instance.new("Frame")
-main.Name = "Main"
-main.Size = UDim2.new(0, guiWidth, 0, guiHeight)
-main.Position = UDim2.new(0.5, -guiWidth / 2, 0.08, 0)
-main.BackgroundColor3 = Color3.fromRGB(18, 24, 34)
-main.BorderSizePixel = 0
-main.Active = true
-main.ClipsDescendants = true
-main.Parent = gui
-
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 10)
-mainCorner.Parent = main
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundColor3 = Color3.fromRGB(24, 40, 60)
-title.Text = "  ⚔️ BTD Loot v6"
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.TextColor3 = Color3.fromRGB(90, 220, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 14
-title.BorderSizePixel = 0
-title.Parent = main
-
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 10)
-titleCorner.Parent = title
-
-local body = Instance.new("Frame")
-body.Size = UDim2.new(1, 0, 1, -30)
-body.Position = UDim2.new(0, 0, 0, 30)
-body.BackgroundTransparency = 1
-body.Parent = main
-
-local minBtn = Instance.new("TextButton")
-minBtn.Size = UDim2.new(0, 34, 0, 24)
-minBtn.Position = UDim2.new(1, -38, 0, 3)
-minBtn.BackgroundColor3 = Color3.fromRGB(40, 60, 90)
-minBtn.Text = "—"
-minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-minBtn.Font = Enum.Font.GothamBold
-minBtn.TextSize = 14
-minBtn.BorderSizePixel = 0
-minBtn.ZIndex = 3
-minBtn.Parent = main
-do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = minBtn end
-
-local minimized = false
-minBtn.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    body.Visible = not minimized
-    main.Size = minimized and UDim2.new(0, guiWidth, 0, 30) or UDim2.new(0, guiWidth, 0, guiHeight)
-    minBtn.Text = minimized and "+" or "—"
-end)
-
--- SIDEBAR + AREA KONTEN
-local sidebarW = isMobile and 78 or 92
-local sidebar = Instance.new("ScrollingFrame")
-sidebar.Size = UDim2.new(0, sidebarW, 1, -6)
-sidebar.Position = UDim2.new(0, 4, 0, 3)
-sidebar.BackgroundColor3 = Color3.fromRGB(14, 20, 30)
-sidebar.BorderSizePixel = 0
-sidebar.ScrollBarThickness = 2
-sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
-sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
-sidebar.Parent = body
-do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = sidebar end
-do
-    local l = Instance.new("UIListLayout")
-    l.Padding = UDim.new(0, 4)
-    l.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    l.Parent = sidebar
-    local pd = Instance.new("UIPadding")
-    pd.PaddingTop = UDim.new(0, 4)
-    pd.Parent = sidebar
-end
-
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1, -(sidebarW + 12), 1, -6)
-content.Position = UDim2.new(0, sidebarW + 8, 0, 3)
-content.BackgroundTransparency = 1
-content.Parent = body
-
-local btnScroll -- page aktif (dipakai makeToggle/makeButton)
-local tabPages, tabButtons = {}, {}
-
-local function selectTab(name)
-    for n, pg in pairs(tabPages) do
-        pg.Visible = (n == name)
-        tabButtons[n].BackgroundColor3 = (n == name) and Color3.fromRGB(35, 110, 160) or Color3.fromRGB(30, 40, 58)
-    end
-end
-
-local function newTab(name, isFrame)
-    local page
-    if isFrame then
-        page = Instance.new("Frame")
-        page.BackgroundTransparency = 1
-    else
-        page = Instance.new("ScrollingFrame")
-        page.BackgroundTransparency = 1
-        page.ScrollBarThickness = 4
-        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        page.CanvasSize = UDim2.new(0, 0, 0, 0)
-        local l = Instance.new("UIListLayout")
-        l.Padding = UDim.new(0, 6)
-        l.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        l.SortOrder = Enum.SortOrder.LayoutOrder
-        l.Parent = page
-        local pd = Instance.new("UIPadding")
-        pd.PaddingTop = UDim.new(0, 2)
-        pd.PaddingRight = UDim.new(0, 4)
-        pd.Parent = page
-    end
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.BorderSizePixel = 0
-    page.Visible = false
-    page.Parent = content
-    tabPages[name] = page
-
-    local tb = Instance.new("TextButton")
-    tb.Size = UDim2.new(1, -8, 0, isMobile and 38 or 32)
-    tb.BackgroundColor3 = Color3.fromRGB(30, 40, 58)
-    tb.Text = name
-    tb.TextColor3 = Color3.fromRGB(235, 235, 235)
-    tb.Font = Enum.Font.GothamBold
-    tb.TextSize = 11
-    tb.TextWrapped = true
-    tb.BorderSizePixel = 0
-    tb.Parent = sidebar
-    do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = tb end
-    tb.MouseButton1Click:Connect(function() selectTab(name) end)
-    tabButtons[name] = tb
-
-    if not isFrame then btnScroll = page end
-    return page
-end
-
-local function buildLogTab()
-    local page = newTab("📜 Log", true)
-    logScroll = Instance.new("ScrollingFrame")
-    logScroll.Size = UDim2.new(1, -4, 1, -34)
-    logScroll.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
-    logScroll.BorderSizePixel = 0
-    logScroll.ScrollBarThickness = 4
-    logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    logScroll.Parent = page
-    do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = logScroll end
-    do local l = Instance.new("UIListLayout") l.SortOrder = Enum.SortOrder.LayoutOrder l.Parent = logScroll end
-
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -4, 0, 28)
-    row.Position = UDim2.new(0, 0, 1, -28)
-    row.BackgroundTransparency = 1
-    row.Parent = page
-
-    local function mk(txt, col, pos)
-        local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0.5, -3, 1, 0)
-        b.Position = pos
-        b.BackgroundColor3 = col
-        b.Text = txt
-        b.TextColor3 = Color3.fromRGB(255, 255, 255)
-        b.Font = Enum.Font.GothamBold
-        b.TextSize = 12
-        b.BorderSizePixel = 0
-        b.Parent = row
-        local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = b
-        return b
-    end
-    local copyBtn = mk("📋 Copy", Color3.fromRGB(60, 90, 160), UDim2.new(0, 0, 0, 0))
-    local clearBtn = mk("🗑 Clear", Color3.fromRGB(120, 50, 50), UDim2.new(0.5, 3, 0, 0))
-
-    copyBtn.MouseButton1Click:Connect(function()
-        if setclipboard then
-            setclipboard(table.concat(LogBuffer, "\n"))
-            log("LOG", "Log disalin ✅")
-        else
-            log("LOG", "⚠️ Executor tidak support copy — screenshot log ini")
-        end
-    end)
-    clearBtn.MouseButton1Click:Connect(function()
-        for _, lbl in ipairs(logLabels) do lbl:Destroy() end
-        logLabels = {}
-        LogBuffer = {}
-    end)
-    for _, line in ipairs(LogBuffer) do
-        local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, -8, 0, 14)
-        lbl.BackgroundTransparency = 1
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.Font = Enum.Font.Code
-        lbl.TextSize = 11
-        lbl.TextColor3 = Color3.fromRGB(170, 255, 170)
-        lbl.Text = line
-        lbl.Parent = logScroll
-        table.insert(logLabels, lbl)
-    end
-end
-
-
-local function styleButton(btn)
-    btn.Size = UDim2.new(1, -16, 0, btnHeight)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 50, 70)
-    btn.TextColor3 = Color3.fromRGB(235, 235, 235)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 13
-    btn.BorderSizePixel = 0
-    if btn:IsA("GuiButton") then btn.AutoButtonColor = true end
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 8)
-    c.Parent = btn
-end
-
-local function makeToggle(labelText, stateKey, onToggle)
-    local btn = Instance.new("TextButton")
-    styleButton(btn)
-    btn.Parent = btnScroll
-
-    local function refresh()
-        if State[stateKey] then
-            btn.Text = labelText .. " : ON"
-            btn.BackgroundColor3 = Color3.fromRGB(35, 140, 80)
-        else
-            btn.Text = labelText .. " : OFF"
-            btn.BackgroundColor3 = Color3.fromRGB(40, 50, 70)
-        end
-    end
-
-    btn.MouseButton1Click:Connect(function()
-        State[stateKey] = not State[stateKey]
-        refresh()
-        log("GUI", labelText .. " -> " .. (State[stateKey] and "ON ✅" or "OFF"))
-        if onToggle then
-            pcall(onToggle, State[stateKey])
-        end
-    end)
-
-    refresh()
-    return btn
-end
-
-local function makeButton(labelText, color, callback)
-    local btn = Instance.new("TextButton")
-    styleButton(btn)
-    btn.Text = labelText
-    btn.BackgroundColor3 = color
-    btn.Parent = btnScroll
-    btn.MouseButton1Click:Connect(function()
-        pcall(callback, btn)
-    end)
-    return btn
-end
-
---=== OPSI TAMBAHAN ===--
-local function makeSection(text)
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1, -16, 0, 20)
-    l.BackgroundTransparency = 1
-    l.Text = "── " .. text .. " ──"
-    l.TextColor3 = Color3.fromRGB(90, 220, 255)
-    l.Font = Enum.Font.GothamBold
-    l.TextSize = 12
-    l.Parent = btnScroll
-end
-
-local function makeNumberBox(labelText, cfgKey, minV, maxV)
-    local box = Instance.new("TextBox")
-    styleButton(box)
-    box.Text = labelText .. ": " .. tostring(Config[cfgKey])
-    box.PlaceholderText = labelText .. " (" .. minV .. "-" .. maxV .. ")"
-    box.ClearTextOnFocus = true
-    box.Parent = btnScroll
-    box.FocusLost:Connect(function()
-        local n = tonumber(string.match(box.Text, "-?[%d%.]+"))
-        if n then
-            Config[cfgKey] = math.clamp(n, minV, maxV)
-            log("CFG", labelText .. " = " .. Config[cfgKey])
-        end
-        box.Text = labelText .. ": " .. tostring(Config[cfgKey])
-    end)
-end
-
-newTab("📍 Base")
-makeButton("📍 Set Base (berdiri di base!)", Color3.fromRGB(200, 120, 40), function(btn)
-    local hrp = getHRP()
-    if hrp then
-        HomeCFrame = hrp.CFrame
-        log("BASE", "📍 Base tersimpan")
-        btn.Text = "✅ Base tersimpan!"
-        task.wait(1)
-        btn.Text = "📍 Set Base (berdiri di base!)"
-    end
-end)
-
-makeButton("🏠 Pulang ke Base", Color3.fromRGB(200, 120, 40), function()
-    if HomeCFrame then
-        local c = getChar()
-        if c then c:PivotTo(HomeCFrame + Vector3.new(0, 3, 0)) end
-        log("TP", "Pulang ke base")
-    else
-        log("TP", "⚠️ Base belum di-set")
-    end
-end)
-makeNumberBox("Radius Base", "HomeRadius", 10, 300)
-
-newTab("★ Auto Steal TP")
-makeToggle("★ Auto Steal TP", "AutoStealTP", function(on)
-    if on and not HomeCFrame then
-        local hrp = getHRP()
-        if hrp then
-            HomeCFrame = hrp.CFrame
-            log("BASE", "📍 Base otomatis di-set")
-        end
-    end
-end)
-
-makeButton("▶ Steal TP Sekali", Color3.fromRGB(60, 90, 160), function()
-    task.spawn(doStealCycle)
-end)
-makeNumberBox("Jumlah Retry", "StealRetries", 1, 10)
-makeNumberBox("Kecepatan TP", "MoveStep", 4, 60)
-makeNumberBox("Jeda Siklus (detik)", "DelayPerCycle", 0.1, 10)
-makeNumberBox("Blacklist (detik)", "BlacklistTime", 5, 120)
-makeNumberBox("Jarak Maks Target", "MaxTargetDistance", 20, 1000)
 State.FallbackAny = Config.FallbackAnyPrompt
-makeToggle("Fallback Semua Prompt", "FallbackAny", function(on) Config.FallbackAnyPrompt = on end)
+State.AntiAFK = true
 
-newTab("🔎 Filter Loot")
-
-local filterBox = Instance.new("TextBox")
-styleButton(filterBox)
-filterBox.PlaceholderText = "Filter loot: golden, secret..."
-filterBox.Text = ""
-filterBox.Parent = btnScroll
-filterBox.FocusLost:Connect(function()
-    Config.RarityFilter = {}
-    for word in string.gmatch(string.lower(filterBox.Text), "[^,%s]+") do
-        table.insert(Config.RarityFilter, word)
-    end
-    log("GUI", "🎯 Filter: " .. (#Config.RarityFilter > 0 and table.concat(Config.RarityFilter, ", ") or "SEMUA loot"))
-end)
-
-makeToggle("Skip Prompt Hack", "SkipHack")
-makeSection("Rarity (kosong = semua)")
-for _, r in ipairs(Config.Rarities) do
-    makeToggle(r, "R_" .. r, function(on)
-        RaritySel[r] = on or nil
-        local list = {}
-        for _, name in ipairs(Config.Rarities) do
-            if RaritySel[name] then table.insert(list, name) end
-        end
-        log("GUI", "🎯 Rarity: " .. (#list > 0 and table.concat(list, ", ") or "SEMUA"))
-    end)
-end
-
-newTab("🤏 Auto Steal")
-makeToggle("Auto Steal (tanpa TP)", "AutoSteal")
-makeNumberBox("Range Auto Steal", "AutoStealRange", 5, 100)
-
-newTab("⚡ Instant Steal")
-
-makeToggle("Instant Steal", "InstantSteal", function(on)
-    if on then
-        for o in pairs(PromptCache) do
-            pcall(applyInstant, o)
-        end
-    end
-end)
-
-newTab("🏃 WalkSpeed")
-makeToggle("WalkSpeed", "WalkSpeed", function(on)
-    if not on then
-        local hum = getHumanoid()
-        if hum then hum.WalkSpeed = 16 end
-    end
-end)
-
-local speedBox = Instance.new("TextBox")
-styleButton(speedBox)
-speedBox.Text = tostring(Config.WalkSpeedValue)
-speedBox.PlaceholderText = "WalkSpeed (16-500)"
-speedBox.Parent = btnScroll
-speedBox.FocusLost:Connect(function()
-    local n = tonumber(speedBox.Text)
-    if n then
-        Config.WalkSpeedValue = math.clamp(math.floor(n), 16, 500)
-    end
-    speedBox.Text = tostring(Config.WalkSpeedValue)
-end)
-
-newTab("🦘 Inf Jump")
-makeToggle("Infinite Jump", "InfiniteJump")
-
-newTab("👻 NoClip")
-makeToggle("NoClip", "NoClip")
-
-newTab("💰 Collect")
-makeToggle("Auto Collect", "AutoCollect")
-makeNumberBox("Range Auto Collect", "AutoCollectRange", 5, 100)
-
-newTab("🛡 Anti KB")
-makeToggle("Anti Knockback", "AntiKnockback")
-
-newTab("🎯 TP Target")
-makeButton("🎯 TP ke Target Terdekat", Color3.fromRGB(60, 90, 160), function()
-    local _, part = findStealTarget()
-    local c = getChar()
-    if part and c then
-        c:PivotTo(CFrame.new(part.Position + Vector3.new(0, 3, 0)))
-        log("TP", "TP ke target")
-    else
-        log("TP", "⚠️ Tidak ada target")
-    end
-end)
-makeButton("💀 Reset Karakter", Color3.fromRGB(120, 50, 50), function()
-    local h = getHumanoid()
-    if h then h.Health = 0 end
-end)
-
-newTab("👁 ESP Loot")
 local espFolder = Instance.new("Folder")
 espFolder.Name = "BTDL_ESP"
 espFolder.Parent = gui
+
+do
+    local isMobile = UserInputService.TouchEnabled
+    local viewport = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 400)
+    local W   = isMobile and math.clamp(viewport.X * 0.55, 300, 380) or 360
+    local H   = isMobile and math.clamp(viewport.Y * 0.78, 210, 280) or 330
+    local ROW = isMobile and 34 or 30
+
+    local C = {
+        bg     = Color3.fromRGB(18, 20, 28),
+        bar    = Color3.fromRGB(26, 29, 40),
+        row    = Color3.fromRGB(34, 38, 52),
+        accent = Color3.fromRGB(96, 156, 255),
+        on     = Color3.fromRGB(70, 205, 130),
+        off    = Color3.fromRGB(72, 78, 98),
+        text   = Color3.fromRGB(232, 235, 242),
+        sub    = Color3.fromRGB(135, 143, 165),
+        danger = Color3.fromRGB(210, 75, 80),
+    }
+
+    local function mk(class, props, parent)
+        local o = Instance.new(class)
+        for k, v in pairs(props) do o[k] = v end
+        o.Parent = parent
+        return o
+    end
+    local function corner(o, r)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, r or 6)
+        c.Parent = o
+    end
+
+    -- drag (mouse + touch)
+    local function makeDraggable(handle, target, onTap)
+        local dragging, startPos, startInput, moved = false, nil, nil, false
+        handle.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging, moved = true, false
+                startPos, startInput = target.Position, input.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                        if not moved and onTap then onTap() end
+                    end
+                end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local d = input.Position - startInput
+                if d.Magnitude > 6 then moved = true end
+                if moved then
+                    target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+                end
+            end
+        end)
+    end
+
+    ----------------------------------------------------------
+    -- WINDOW
+    ----------------------------------------------------------
+    local main = mk("Frame", {
+        Name = "Main", Size = UDim2.new(0, W, 0, H),
+        Position = UDim2.new(0.5, -W / 2, 0.08, 0),
+        BackgroundColor3 = C.bg, BorderSizePixel = 0, Active = true, ClipsDescendants = true,
+    }, gui)
+    corner(main, 10)
+
+    local topbar = mk("Frame", {Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = C.bar, BorderSizePixel = 0}, main)
+    mk("TextLabel", {
+        Size = UDim2.new(1, -70, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1,
+        Text = "⚔️ BTD Loot  v7", TextColor3 = C.text, Font = Enum.Font.GothamBold, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, topbar)
+
+    local body = mk("Frame", {Size = UDim2.new(1, 0, 1, -28), Position = UDim2.new(0, 0, 0, 28), BackgroundTransparency = 1}, main)
+
+    local minimized = false
+    local minBtn = mk("TextButton", {
+        Size = UDim2.new(0, 28, 0, 20), Position = UDim2.new(1, -62, 0, 4), BackgroundColor3 = C.row,
+        Text = "—", TextColor3 = C.text, Font = Enum.Font.GothamBold, TextSize = 12, BorderSizePixel = 0,
+    }, topbar)
+    corner(minBtn, 5)
+    minBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        body.Visible = not minimized
+        main.Size = UDim2.new(0, W, 0, minimized and 28 or H)
+        minBtn.Text = minimized and "+" or "—"
+    end)
+    local hideBtn = mk("TextButton", {
+        Size = UDim2.new(0, 28, 0, 20), Position = UDim2.new(1, -32, 0, 4), BackgroundColor3 = C.danger,
+        Text = "✕", TextColor3 = C.text, Font = Enum.Font.GothamBold, TextSize = 12, BorderSizePixel = 0,
+    }, topbar)
+    corner(hideBtn, 5)
+    hideBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+
+    ----------------------------------------------------------
+    -- TABS (lazy build)
+    ----------------------------------------------------------
+    local TAB_NAMES = {"Steal", "Filter", "Player", "Misc", "Log"}
+    local tabbar = mk("Frame", {Size = UDim2.new(1, -12, 0, 26), Position = UDim2.new(0, 6, 0, 4), BackgroundTransparency = 1}, body)
+    do
+        local l = Instance.new("UIListLayout")
+        l.FillDirection = Enum.FillDirection.Horizontal
+        l.Padding = UDim.new(0, 4)
+        l.Parent = tabbar
+    end
+    local holder = mk("Frame", {Size = UDim2.new(1, 0, 1, -34), Position = UDim2.new(0, 0, 0, 34), BackgroundTransparency = 1}, body)
+
+    local pages, tabBtns, builders, built = {}, {}, {}, {}
+    local cur -- page yang sedang dibangun
+
+    local function selectTab(name)
+        for n, pg in pairs(pages) do
+            local on = (n == name)
+            pg.Visible = on
+            tabBtns[n].TextColor3 = on and C.accent or C.sub
+            tabBtns[n].BackgroundColor3 = on and C.row or C.bar
+        end
+        if not built[name] then
+            built[name] = true
+            cur = pages[name]
+            builders[name]()
+        end
+    end
+
+    for _, name in ipairs(TAB_NAMES) do
+        local pg = mk("ScrollingFrame", {
+            Size = UDim2.new(1, -8, 1, -4), Position = UDim2.new(0, 4, 0, 0), BackgroundTransparency = 1,
+            BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = C.accent,
+            AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0, 0, 0, 0), Visible = false,
+        }, holder)
+        do
+            local l = Instance.new("UIListLayout")
+            l.Padding = UDim.new(0, 4)
+            l.SortOrder = Enum.SortOrder.LayoutOrder
+            l.Parent = pg
+            local pd = Instance.new("UIPadding")
+            pd.PaddingLeft, pd.PaddingRight, pd.PaddingBottom = UDim.new(0, 2), UDim.new(0, 4), UDim.new(0, 6)
+            pd.Parent = pg
+        end
+        pages[name] = pg
+
+        local tb = mk("TextButton", {
+            Size = UDim2.new(1 / #TAB_NAMES, -4, 1, 0), BackgroundColor3 = C.bar, Text = name,
+            TextColor3 = C.sub, Font = Enum.Font.GothamBold, TextSize = 11, BorderSizePixel = 0, AutoButtonColor = false,
+        }, tabbar)
+        corner(tb, 6)
+        tb.MouseButton1Click:Connect(function() selectTab(name) end)
+        tabBtns[name] = tb
+    end
+
+    ----------------------------------------------------------
+    -- KOMPONEN
+    ----------------------------------------------------------
+    local function section(text)
+        mk("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, Text = text, TextColor3 = C.accent,
+            Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+        }, cur)
+    end
+
+    local function toggle(label, key, onChange)
+        local row = mk("TextButton", {
+            Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = C.row, Text = "", AutoButtonColor = false, BorderSizePixel = 0,
+        }, cur)
+        corner(row)
+        mk("TextLabel", {
+            Size = UDim2.new(1, -56, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1,
+            Text = label, TextColor3 = C.text, Font = Enum.Font.Gotham, TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, row)
+        local pill = mk("Frame", {Size = UDim2.new(0, 34, 0, 16), Position = UDim2.new(1, -44, 0.5, -8), BorderSizePixel = 0}, row)
+        corner(pill, 8)
+        local knob = mk("Frame", {Size = UDim2.new(0, 12, 0, 12), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, pill)
+        corner(knob, 6)
+        local function refresh()
+            local on = State[key] and true or false
+            pill.BackgroundColor3 = on and C.on or C.off
+            knob.Position = UDim2.new(0, on and 20 or 2, 0, 2)
+        end
+        row.MouseButton1Click:Connect(function()
+            State[key] = not State[key]
+            refresh()
+            log("GUI", label .. " -> " .. (State[key] and "ON" or "OFF"))
+            if onChange then pcall(onChange, State[key]) end
+        end)
+        refresh()
+    end
+
+    local function button(label, color, callback)
+        local b = mk("TextButton", {
+            Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = color or C.row, Text = label, TextColor3 = C.text,
+            Font = Enum.Font.GothamBold, TextSize = 12, BorderSizePixel = 0,
+        }, cur)
+        corner(b)
+        b.MouseButton1Click:Connect(function() pcall(callback, b) end)
+        return b
+    end
+
+    local function numbox(label, cfgKey, minV, maxV, onSet)
+        local box = mk("TextBox", {
+            Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = C.row, TextColor3 = C.text,
+            PlaceholderColor3 = C.sub, Font = Enum.Font.Gotham, TextSize = 12, BorderSizePixel = 0,
+            ClearTextOnFocus = true, Text = label .. ": " .. tostring(Config[cfgKey]),
+        }, cur)
+        corner(box)
+        box.FocusLost:Connect(function()
+            local n = tonumber(string.match(box.Text, "-?[%d%.]+"))
+            if n then
+                Config[cfgKey] = math.clamp(n, minV, maxV)
+                if onSet then pcall(onSet, Config[cfgKey]) end
+                log("CFG", label .. " = " .. Config[cfgKey])
+            end
+            box.Text = label .. ": " .. tostring(Config[cfgKey])
+        end)
+    end
+
+    ----------------------------------------------------------
+    -- TAB: STEAL
+    ----------------------------------------------------------
+    builders["Steal"] = function()
+        toggle("★ Auto Steal TP", "AutoStealTP", function(on)
+            if on and not HomeCFrame then
+                local hrp = getHRP()
+                if hrp then
+                    HomeCFrame = hrp.CFrame
+                    log("BASE", "📍 Base otomatis di-set")
+                end
+            end
+        end)
+        button("📍 Set Base (berdiri di base!)", Color3.fromRGB(190, 115, 40), function(btn)
+            local hrp = getHRP()
+            if hrp then
+                HomeCFrame = hrp.CFrame
+                log("BASE", "📍 Base tersimpan")
+                btn.Text = "✅ Base tersimpan!"
+                task.wait(1)
+                btn.Text = "📍 Set Base (berdiri di base!)"
+            end
+        end)
+        button("🏠 Pulang ke Base", nil, function()
+            local c = getChar()
+            if HomeCFrame and c then
+                c:PivotTo(HomeCFrame + Vector3.new(0, 3, 0))
+            else
+                log("TP", "⚠️ Base belum di-set")
+            end
+        end)
+        button("▶ Steal TP Sekali", nil, function() task.spawn(doStealCycle) end)
+
+        section("PENGATURAN")
+        numbox("Radius Base", "HomeRadius", 10, 300)
+        numbox("Jarak Maks Target", "MaxTargetDistance", 20, 1000)
+        numbox("Jumlah Retry", "StealRetries", 1, 10)
+        numbox("Kecepatan TP", "MoveStep", 4, 60)
+        numbox("Jeda Siklus (dtk)", "DelayPerCycle", 0.1, 10)
+        numbox("Blacklist (dtk)", "BlacklistTime", 5, 120)
+        toggle("Fallback Semua Prompt", "FallbackAny", function(on) Config.FallbackAnyPrompt = on end)
+
+        section("MODE LAIN")
+        toggle("Auto Steal (tanpa TP)", "AutoSteal")
+        numbox("Range Auto Steal", "AutoStealRange", 5, 100)
+        toggle("Instant Steal", "InstantSteal", function(on)
+            if on then
+                for o in pairs(PromptCache) do pcall(applyInstant, o) end
+            end
+        end)
+        toggle("Auto Collect", "AutoCollect")
+        numbox("Range Auto Collect", "AutoCollectRange", 5, 100)
+    end
+
+    ----------------------------------------------------------
+    -- TAB: FILTER
+    ----------------------------------------------------------
+    builders["Filter"] = function()
+        section("RARITY (kosong = semua)")
+        for _, r in ipairs(Config.Rarities) do
+            toggle(r, "R_" .. r, function(on)
+                RaritySel[r] = on or nil
+                local list = {}
+                for _, name in ipairs(Config.Rarities) do
+                    if RaritySel[name] then table.insert(list, name) end
+                end
+                log("GUI", "🎯 Rarity: " .. (#list > 0 and table.concat(list, ", ") or "SEMUA"))
+            end)
+        end
+        section("KATA KUNCI")
+        local fb = mk("TextBox", {
+            Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = C.row, TextColor3 = C.text, PlaceholderColor3 = C.sub,
+            PlaceholderText = "Filter nama: golden, secret...", Text = "", Font = Enum.Font.Gotham, TextSize = 12,
+            BorderSizePixel = 0, ClearTextOnFocus = false,
+        }, cur)
+        corner(fb)
+        fb.FocusLost:Connect(function()
+            Config.RarityFilter = {}
+            for word in string.gmatch(string.lower(fb.Text), "[^,%s]+") do
+                table.insert(Config.RarityFilter, word)
+            end
+            log("GUI", "🎯 Filter: " .. (#Config.RarityFilter > 0 and table.concat(Config.RarityFilter, ", ") or "SEMUA"))
+        end)
+        toggle("Skip Prompt Hack", "SkipHack")
+    end
+
+    ----------------------------------------------------------
+    -- TAB: PLAYER
+    ----------------------------------------------------------
+    builders["Player"] = function()
+        toggle("WalkSpeed", "WalkSpeed", function(on)
+            if not on then
+                local hum = getHumanoid()
+                if hum then hum.WalkSpeed = 16 end
+            end
+        end)
+        numbox("Nilai WalkSpeed", "WalkSpeedValue", 16, 500, function(v) Config.WalkSpeedValue = math.floor(v) end)
+        toggle("Infinite Jump", "InfiniteJump")
+        toggle("NoClip", "NoClip")
+        toggle("Fly", "Fly")
+        toggle("Anti Knockback", "AntiKnockback")
+        toggle("Auto Reset ke Base Saat Respawn", "AutoRespawnBase")
+        toggle("Anti AFK", "AntiAFK")
+    end
+
+    ----------------------------------------------------------
+    -- TAB: MISC
+    ----------------------------------------------------------
+    builders["Misc"] = function()
+        toggle("ESP Loot", "ESP")
+        local Lighting = game:GetService("Lighting")
+        local oldLight = {Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd}
+        toggle("Fullbright", "Fullbright", function(on)
+            if on then
+                Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = 2, 14, 1e5
+            else
+                Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = oldLight.Brightness, oldLight.ClockTime, oldLight.FogEnd
+            end
+        end)
+        button("🎯 TP ke Target Terdekat", nil, function()
+            local _, part = findStealTarget()
+            local c = getChar()
+            if part and c then
+                c:PivotTo(CFrame.new(part.Position + Vector3.new(0, 3, 0)))
+            else
+                log("TP", "⚠️ Tidak ada target")
+            end
+        end)
+        button("🔍 Debug Prompts", nil, debugPrompts)
+        button("💀 Reset Karakter", Color3.fromRGB(150, 60, 60), function()
+            local h = getHumanoid()
+            if h then h.Health = 0 end
+        end)
+        button("🔄 Rejoin Server", Color3.fromRGB(100, 70, 150), function()
+            pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer) end)
+        end)
+        button("❌ Unload Script", C.danger, function()
+            for k in pairs(State) do State[k] = false end
+            espFolder:ClearAllChildren()
+            gui:Destroy()
+        end)
+    end
+
+    ----------------------------------------------------------
+    -- TAB: LOG
+    ----------------------------------------------------------
+    local LOG_FILE = "BTD_Loot_log.txt"
+    local function saveLogFile()
+        if writefile then
+            pcall(writefile, LOG_FILE, table.concat(LogBuffer, "\n"))
+            return true
+        end
+        return false
+    end
+    task.spawn(function()
+        while true do
+            task.wait(15)
+            if #LogBuffer > 0 then saveLogFile() end
+        end
+    end)
+
+    local webhookUrl = ""
+    local function sendWebhook()
+        local req = (syn and syn.request) or (http and http.request) or http_request or request
+        if webhookUrl == "" or not req then
+            log("LOG", "⚠️ Isi URL webhook dulu / executor tidak support request")
+            return
+        end
+        local text = "```\n" .. string.sub(table.concat(LogBuffer, "\n"), -1800) .. "\n```"
+        local ok, err = pcall(function()
+            req({
+                Url = webhookUrl, Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = game:GetService("HttpService"):JSONEncode({content = text}),
+            })
+        end)
+        log("LOG", ok and "Log terkirim ✅" or ("Gagal kirim: " .. tostring(err)))
+    end
+
+    builders["Log"] = function()
+        logScroll = mk("ScrollingFrame", {
+            Size = UDim2.new(1, 0, 0, isMobile and 110 or 150), BackgroundColor3 = Color3.fromRGB(12, 14, 20),
+            BorderSizePixel = 0, ScrollBarThickness = 3, AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+        }, cur)
+        corner(logScroll)
+        logLabel = mk("TextLabel", {
+            Size = UDim2.new(1, -8, 0, 0), Position = UDim2.new(0, 4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(170, 240, 190), Font = Enum.Font.Code,
+            TextSize = 10, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top, Text = "",
+        }, logScroll)
+        refreshLog()
+
+        button("📋 Copy Log", Color3.fromRGB(60, 95, 165), function()
+            if setclipboard then
+                setclipboard(table.concat(LogBuffer, "\n"))
+                log("LOG", "Log disalin ✅")
+            else
+                log("LOG", "⚠️ Executor tidak support copy")
+            end
+        end)
+        button("💾 Simpan ke File", Color3.fromRGB(45, 120, 95), function()
+            log("LOG", saveLogFile() and ("Tersimpan: workspace/" .. LOG_FILE) or "⚠️ writefile tidak didukung")
+        end)
+        button("🗑 Clear", Color3.fromRGB(130, 55, 55), function()
+            LogBuffer = {}
+            refreshLog()
+        end)
+        local wh = mk("TextBox", {
+            Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = C.row, TextColor3 = C.text, PlaceholderColor3 = C.sub,
+            PlaceholderText = "URL Webhook Discord (opsional)", Text = "", Font = Enum.Font.Gotham, TextSize = 11,
+            BorderSizePixel = 0, ClearTextOnFocus = false,
+        }, cur)
+        corner(wh)
+        wh.FocusLost:Connect(function() webhookUrl = wh.Text end)
+        button("📨 Kirim ke Webhook", Color3.fromRGB(88, 101, 242), function()
+            webhookUrl = wh.Text
+            sendWebhook()
+        end)
+    end
+
+    selectTab("Steal")
+
+    ----------------------------------------------------------
+    -- TOMBOL MELAYANG + TOGGLE KEY
+    ----------------------------------------------------------
+    local bubble = mk("TextButton", {
+        Size = UDim2.new(0, 44, 0, 44), Position = UDim2.new(0, 12, 0.4, 0), BackgroundColor3 = C.bar,
+        Text = "⚔️", TextSize = 20, Font = Enum.Font.GothamBold, TextColor3 = C.accent, BorderSizePixel = 0, Active = true,
+    }, gui)
+    corner(bubble, 22)
+    makeDraggable(topbar, main)
+    makeDraggable(bubble, bubble, function() main.Visible = not main.Visible end)
+
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == Config.ToggleGUIKey then
+            main.Visible = not main.Visible
+        end
+    end)
+end
+
+--==================================================
+-- FITUR PENDUKUNG (loop ringan)
+--==================================================
+
+-- ESP: update tiap 3 dtk, maksimal 40 label
 task.spawn(function()
     while true do
         task.wait(3)
@@ -1244,7 +1252,7 @@ task.spawn(function()
         if State.ESP then
             local n = 0
             for obj in pairs(PromptCache) do
-                if n >= 60 then break end
+                if n >= 40 then break end
                 if obj:IsA("ProximityPrompt") and matches(promptText(obj), Config.StealKeywords) and not isOwnPrompt(obj) then
                     local part = promptPart(obj)
                     if part then
@@ -1270,21 +1278,7 @@ task.spawn(function()
         end
     end
 end)
-makeToggle("ESP Loot", "ESP")
 
-newTab("💡 Fullbright")
-
-local Lighting = game:GetService("Lighting")
-local oldLight = {Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd}
-makeToggle("Fullbright", "Fullbright", function(on)
-    if on then
-        Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = 2, 14, 1e5
-    else
-        Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = oldLight.Brightness, oldLight.ClockTime, oldLight.FogEnd
-    end
-end)
-
-newTab("😴 Anti AFK")
 LocalPlayer.Idled:Connect(function()
     if State.AntiAFK then
         pcall(function()
@@ -1294,27 +1288,19 @@ LocalPlayer.Idled:Connect(function()
         end)
     end
 end)
-State.AntiAFK = true
-makeToggle("Anti AFK", "AntiAFK")
 
-newTab("🕊 Fly")
-makeToggle("Fly (Mobile/PC)", "Fly")
 RunService.Heartbeat:Connect(function()
     if State.Fly then
         local hrp, hum = getHRP(), getHumanoid()
         if hrp and hum then
-            local cam = Workspace.CurrentCamera
             local dir = hum.MoveDirection
-            local vy = 0
-            if hum.Jump then vy = 50 end
+            local vy = hum.Jump and 50 or 0
             hrp.AssemblyLinearVelocity = Vector3.new(dir.X * Config.WalkSpeedValue, vy, dir.Z * Config.WalkSpeedValue)
                 + Vector3.new(0, 1.9, 0)
         end
     end
 end)
 
-newTab("🔁 Auto Base")
-makeToggle("Auto Reset Kalau Mati", "AutoRespawnBase")
 LocalPlayer.CharacterAdded:Connect(function(char)
     if State.AutoRespawnBase and HomeCFrame then
         task.wait(1)
@@ -1322,135 +1308,23 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
-newTab("🌐 Server")
-makeButton("🔄 Rejoin Server", Color3.fromRGB(90, 60, 130), function()
-    local TS = game:GetService("TeleportService")
-    pcall(function() TS:Teleport(game.PlaceId, LocalPlayer) end)
-end)
-makeButton("❌ Tutup Script (Unload)", Color3.fromRGB(120, 50, 50), function()
-    for k in pairs(State) do State[k] = false end
-    espFolder:ClearAllChildren()
-    gui:Destroy()
-end)
-
-newTab("🔍 Debug")
-makeButton("🔍 Debug Prompts", Color3.fromRGB(90, 60, 130), debugPrompts)
-
-buildLogTab()
-selectTab("📍 Base")
-
--- pastikan menu terbuka (tidak minimize) saat pertama jalan
-minimized = false
-body.Visible = true
-main.Size = UDim2.new(0, guiWidth, 0, guiHeight)
-minBtn.Text = "—"
-
---=== LOG: tangkap error Roblox + simpan ke file + kirim webhook ===--
+-- tangkap error Roblox ke log (dibatasi 1 baris/detik)
 local lastGameLog = 0
 pcall(function()
     game:GetService("LogService").MessageOut:Connect(function(msg, mtype)
         if mtype == Enum.MessageType.MessageError or mtype == Enum.MessageType.MessageWarning then
-            -- throttle: game yang spam error tidak boleh bikin ribuan label GUI
             local now = tick()
-            if now - (lastGameLog or 0) < 1 then return end
+            if now - lastGameLog < 1 then return end
             lastGameLog = now
             log(mtype == Enum.MessageType.MessageError and "ERR" or "WARN", string.sub(msg, 1, 160))
         end
     end)
 end)
 
-local LOG_FILE = "BTD_Loot_log.txt"
-local function saveLogFile()
-    if writefile then
-        pcall(writefile, LOG_FILE, table.concat(LogBuffer, "\n"))
-        return true
-    end
-    return false
-end
-task.spawn(function()
-    while true do
-        task.wait(10)
-        saveLogFile()
-    end
-end)
-
-local webhookUrl = ""
-local function sendWebhook()
-    local req = (syn and syn.request) or (http and http.request) or http_request or request
-    if webhookUrl == "" or not req then
-        log("LOG", "⚠️ Isi URL webhook Discord dulu / executor tidak support request")
-        return
-    end
-    local text = "```\n" .. string.sub(table.concat(LogBuffer, "\n"), -1800) .. "\n```"
-    local ok, err = pcall(function()
-        req({
-            Url = webhookUrl,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = game:GetService("HttpService"):JSONEncode({content = text}),
-        })
-    end)
-    log("LOG", ok and "Log terkirim ke webhook ✅" or ("Gagal kirim: " .. tostring(err)))
-end
-
-newTab("📤 Kirim Log")
-makeButton("📋 Copy Semua Log", Color3.fromRGB(60, 90, 160), function()
-    if setclipboard then
-        setclipboard(table.concat(LogBuffer, "\n"))
-        log("LOG", "Log disalin ✅")
-    else
-        log("LOG", "⚠️ Executor tidak support copy")
-    end
-end)
-makeButton("💾 Simpan ke File", Color3.fromRGB(40, 110, 90), function()
-    log("LOG", saveLogFile() and ("Tersimpan: workspace/" .. LOG_FILE) or "⚠️ writefile tidak didukung")
-end)
-local whBox = Instance.new("TextBox")
-styleButton(whBox)
-whBox.PlaceholderText = "URL Webhook Discord (opsional)"
-whBox.Text = ""
-whBox.ClearTextOnFocus = false
-whBox.Parent = btnScroll
-whBox.FocusLost:Connect(function() webhookUrl = whBox.Text end)
-makeButton("📨 Kirim Log ke Webhook", Color3.fromRGB(88, 101, 242), function()
-    webhookUrl = whBox.Text
-    sendWebhook()
-end)
-selectTab("📍 Base")
-
---=== TOMBOL ⚔️ MELAYANG ===--
-local bubble = Instance.new("TextButton")
-bubble.Size = UDim2.new(0, 48, 0, 48)
-bubble.Position = UDim2.new(0, 12, 0.4, 0)
-bubble.BackgroundColor3 = Color3.fromRGB(24, 40, 60)
-bubble.Text = "⚔️"
-bubble.TextSize = 22
-bubble.Font = Enum.Font.GothamBold
-bubble.TextColor3 = Color3.fromRGB(90, 220, 255)
-bubble.BorderSizePixel = 0
-bubble.Active = true
-bubble.Parent = gui
-
-makeDraggable(title, main)
-makeDraggable(bubble, bubble, function()
-    main.Visible = not main.Visible
-end)
-
-local bubbleCorner = Instance.new("UICorner")
-bubbleCorner.CornerRadius = UDim.new(1, 0)
-bubbleCorner.Parent = bubble
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Config.ToggleGUIKey then
-        main.Visible = not main.Visible
-    end
-end)
-
 --==================================================
 -- START
 --==================================================
-log("SYS", "Script v6 loaded ✅ " .. (isMobile and "(MOBILE 📱)" or "(PC 🖥️)"))
+log("SYS", "Script v7 loaded ✅ " .. (UserInputService.TouchEnabled and "(MOBILE 📱)" or "(PC 🖥️)"))
 task.spawn(function()
     task.wait(1.5)
     initBypass()

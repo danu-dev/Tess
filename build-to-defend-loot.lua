@@ -906,7 +906,7 @@ local function styleButton(btn)
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 13
     btn.BorderSizePixel = 0
-    btn.AutoButtonColor = true
+    if btn:IsA("GuiButton") then btn.AutoButtonColor = true end
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, 8)
     c.Parent = btn

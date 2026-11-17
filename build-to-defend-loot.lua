@@ -665,8 +665,8 @@ gui.Parent = guiParent
 
 local isMobile = UserInputService.TouchEnabled
 local viewport = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 400)
-local guiWidth  = isMobile and math.clamp(viewport.X * 0.5, 230, 300) or 250
-local guiHeight = isMobile and math.clamp(viewport.Y * 0.85, 200, 340) or 430
+local guiWidth  = isMobile and math.clamp(viewport.X * 0.75, 340, 460) or 400
+local guiHeight = isMobile and math.clamp(viewport.Y * 0.8, 210, 320) or 400
 local btnHeight = isMobile and 40 or 32
 local logHeight = isMobile and 60 or 100
 
@@ -703,6 +703,7 @@ main.Position = UDim2.new(0.5, -guiWidth / 2, 0.08, 0)
 main.BackgroundColor3 = Color3.fromRGB(18, 24, 34)
 main.BorderSizePixel = 0
 main.Active = true
+main.ClipsDescendants = true
 main.Parent = gui
 
 local mainCorner = Instance.new("UICorner")
@@ -712,7 +713,8 @@ mainCorner.Parent = main
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundColor3 = Color3.fromRGB(24, 40, 60)
-title.Text = "⚔️ BTD Loot v6"
+title.Text = "  ⚔️ BTD Loot v6"
+title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(90, 220, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -723,99 +725,179 @@ local titleCorner = Instance.new("UICorner")
 titleCorner.CornerRadius = UDim.new(0, 10)
 titleCorner.Parent = title
 
-local btnScroll = Instance.new("ScrollingFrame")
-btnScroll.Size = isMobile and UDim2.new(1, 0, 0, guiHeight - 36) or UDim2.new(1, 0, 0, guiHeight - 30 - 20 - logHeight - 32)
-btnScroll.Position = UDim2.new(0, 0, 0, 32)
-btnScroll.BackgroundTransparency = 1
-btnScroll.BorderSizePixel = 0
-btnScroll.ScrollBarThickness = 4
-btnScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-btnScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-btnScroll.Parent = main
+local body = Instance.new("Frame")
+body.Size = UDim2.new(1, 0, 1, -30)
+body.Position = UDim2.new(0, 0, 0, 30)
+body.BackgroundTransparency = 1
+body.Parent = main
 
-local btnLayout = Instance.new("UIListLayout")
-btnLayout.Padding = UDim.new(0, 6)
-btnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-btnLayout.SortOrder = Enum.SortOrder.LayoutOrder
-btnLayout.Parent = btnScroll
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 34, 0, 24)
+minBtn.Position = UDim2.new(1, -38, 0, 3)
+minBtn.BackgroundColor3 = Color3.fromRGB(40, 60, 90)
+minBtn.Text = "—"
+minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 14
+minBtn.BorderSizePixel = 0
+minBtn.ZIndex = 3
+minBtn.Parent = main
+do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = minBtn end
 
-local btnPad = Instance.new("UIPadding")
-btnPad.PaddingTop = UDim.new(0, 6)
-btnPad.Parent = btnScroll
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    body.Visible = not minimized
+    main.Size = minimized and UDim2.new(0, guiWidth, 0, 30) or UDim2.new(0, guiWidth, 0, guiHeight)
+    minBtn.Text = minimized and "+" or "—"
+end)
 
-local logTitle = Instance.new("TextLabel")
-logTitle.Size = UDim2.new(1, 0, 0, 16)
-logTitle.Position = UDim2.new(0, 8, 0, guiHeight - logHeight - 30)
-logTitle.BackgroundTransparency = 1
-logTitle.Text = "📜 LOG:"
-logTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
-logTitle.Font = Enum.Font.GothamBold
-logTitle.TextSize = 11
-logTitle.TextXAlignment = Enum.TextXAlignment.Left
-logTitle.Parent = main
+-- SIDEBAR + AREA KONTEN
+local sidebarW = isMobile and 78 or 92
+local sidebar = Instance.new("ScrollingFrame")
+sidebar.Size = UDim2.new(0, sidebarW, 1, -6)
+sidebar.Position = UDim2.new(0, 4, 0, 3)
+sidebar.BackgroundColor3 = Color3.fromRGB(14, 20, 30)
+sidebar.BorderSizePixel = 0
+sidebar.ScrollBarThickness = 2
+sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
+sidebar.Parent = body
+do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = sidebar end
+do
+    local l = Instance.new("UIListLayout")
+    l.Padding = UDim.new(0, 4)
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    l.Parent = sidebar
+    local pd = Instance.new("UIPadding")
+    pd.PaddingTop = UDim.new(0, 4)
+    pd.Parent = sidebar
+end
 
-logScroll = Instance.new("ScrollingFrame")
-logScroll.Size = UDim2.new(1, -16, 0, logHeight)
-logScroll.Position = UDim2.new(0, 8, 0, guiHeight - logHeight - 14)
-logScroll.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
-logScroll.BorderSizePixel = 0
-logScroll.ScrollBarThickness = 4
-logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-logScroll.Parent = main
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -(sidebarW + 12), 1, -6)
+content.Position = UDim2.new(0, sidebarW + 8, 0, 3)
+content.BackgroundTransparency = 1
+content.Parent = body
 
-local logCorner = Instance.new("UICorner")
-logCorner.CornerRadius = UDim.new(0, 6)
-logCorner.Parent = logScroll
+local btnScroll -- page aktif (dipakai makeToggle/makeButton)
+local tabPages, tabButtons = {}, {}
 
-local logLayout = Instance.new("UIListLayout")
-logLayout.SortOrder = Enum.SortOrder.LayoutOrder
-logLayout.Parent = logScroll
-
-local logBtnRow = Instance.new("Frame")
-logBtnRow.Size = UDim2.new(1, -16, 0, 26)
-logBtnRow.Position = UDim2.new(0, 8, 1, -30)
-logBtnRow.BackgroundTransparency = 1
-logBtnRow.Parent = main
-
-local copyBtn = Instance.new("TextButton")
-copyBtn.Size = UDim2.new(0.5, -3, 1, 0)
-copyBtn.BackgroundColor3 = Color3.fromRGB(60, 90, 160)
-copyBtn.Text = "📋 Copy Log"
-copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-copyBtn.Font = Enum.Font.GothamBold
-copyBtn.TextSize = 12
-copyBtn.BorderSizePixel = 0
-copyBtn.Parent = logBtnRow
-local copyCorner = Instance.new("UICorner") copyCorner.CornerRadius = UDim.new(0, 6) copyCorner.Parent = copyBtn
-
-local clearBtn = Instance.new("TextButton")
-clearBtn.Size = UDim2.new(0.5, -3, 1, 0)
-clearBtn.Position = UDim2.new(0.5, 3, 0, 0)
-clearBtn.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
-clearBtn.Text = "🗑 Clear"
-clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-clearBtn.Font = Enum.Font.GothamBold
-clearBtn.TextSize = 12
-clearBtn.BorderSizePixel = 0
-clearBtn.Parent = logBtnRow
-local clearCorner = Instance.new("UICorner") clearCorner.CornerRadius = UDim.new(0, 6) clearCorner.Parent = clearBtn
-
-copyBtn.MouseButton1Click:Connect(function()
-    local text = table.concat(LogBuffer, "\n")
-    if setclipboard then
-        setclipboard(text)
-        log("LOG", "Log disalin ✅")
-    else
-        log("LOG", "⚠️ Executor tidak support copy — screenshot log ini")
+local function selectTab(name)
+    for n, pg in pairs(tabPages) do
+        pg.Visible = (n == name)
+        tabButtons[n].BackgroundColor3 = (n == name) and Color3.fromRGB(35, 110, 160) or Color3.fromRGB(30, 40, 58)
     end
-end)
+end
 
-clearBtn.MouseButton1Click:Connect(function()
-    for _, lbl in ipairs(logLabels) do lbl:Destroy() end
-    logLabels = {}
-    LogBuffer = {}
-end)
+local function newTab(name, isFrame)
+    local page
+    if isFrame then
+        page = Instance.new("Frame")
+        page.BackgroundTransparency = 1
+    else
+        page = Instance.new("ScrollingFrame")
+        page.BackgroundTransparency = 1
+        page.ScrollBarThickness = 4
+        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        page.CanvasSize = UDim2.new(0, 0, 0, 0)
+        local l = Instance.new("UIListLayout")
+        l.Padding = UDim.new(0, 6)
+        l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        l.SortOrder = Enum.SortOrder.LayoutOrder
+        l.Parent = page
+        local pd = Instance.new("UIPadding")
+        pd.PaddingTop = UDim.new(0, 2)
+        pd.PaddingRight = UDim.new(0, 4)
+        pd.Parent = page
+    end
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BorderSizePixel = 0
+    page.Visible = false
+    page.Parent = content
+    tabPages[name] = page
+
+    local tb = Instance.new("TextButton")
+    tb.Size = UDim2.new(1, -8, 0, isMobile and 38 or 32)
+    tb.BackgroundColor3 = Color3.fromRGB(30, 40, 58)
+    tb.Text = name
+    tb.TextColor3 = Color3.fromRGB(235, 235, 235)
+    tb.Font = Enum.Font.GothamBold
+    tb.TextSize = 11
+    tb.TextWrapped = true
+    tb.BorderSizePixel = 0
+    tb.Parent = sidebar
+    do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = tb end
+    tb.MouseButton1Click:Connect(function() selectTab(name) end)
+    tabButtons[name] = tb
+
+    if not isFrame then btnScroll = page end
+    return page
+end
+
+local function buildLogTab()
+    local page = newTab("📜 Log", true)
+    logScroll = Instance.new("ScrollingFrame")
+    logScroll.Size = UDim2.new(1, -4, 1, -34)
+    logScroll.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
+    logScroll.BorderSizePixel = 0
+    logScroll.ScrollBarThickness = 4
+    logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    logScroll.Parent = page
+    do local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = logScroll end
+    do local l = Instance.new("UIListLayout") l.SortOrder = Enum.SortOrder.LayoutOrder l.Parent = logScroll end
+
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -4, 0, 28)
+    row.Position = UDim2.new(0, 0, 1, -28)
+    row.BackgroundTransparency = 1
+    row.Parent = page
+
+    local function mk(txt, col, pos)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0.5, -3, 1, 0)
+        b.Position = pos
+        b.BackgroundColor3 = col
+        b.Text = txt
+        b.TextColor3 = Color3.fromRGB(255, 255, 255)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 12
+        b.BorderSizePixel = 0
+        b.Parent = row
+        local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = b
+        return b
+    end
+    local copyBtn = mk("📋 Copy", Color3.fromRGB(60, 90, 160), UDim2.new(0, 0, 0, 0))
+    local clearBtn = mk("🗑 Clear", Color3.fromRGB(120, 50, 50), UDim2.new(0.5, 3, 0, 0))
+
+    copyBtn.MouseButton1Click:Connect(function()
+        if setclipboard then
+            setclipboard(table.concat(LogBuffer, "\n"))
+            log("LOG", "Log disalin ✅")
+        else
+            log("LOG", "⚠️ Executor tidak support copy — screenshot log ini")
+        end
+    end)
+    clearBtn.MouseButton1Click:Connect(function()
+        for _, lbl in ipairs(logLabels) do lbl:Destroy() end
+        logLabels = {}
+        LogBuffer = {}
+    end)
+    for _, line in ipairs(LogBuffer) do
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -8, 0, 14)
+        lbl.BackgroundTransparency = 1
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Font = Enum.Font.Code
+        lbl.TextSize = 11
+        lbl.TextColor3 = Color3.fromRGB(170, 255, 170)
+        lbl.Text = line
+        lbl.Parent = logScroll
+        table.insert(logLabels, lbl)
+    end
+end
+
 
 local function styleButton(btn)
     btn.Size = UDim2.new(1, -16, 0, btnHeight)
@@ -870,6 +952,7 @@ local function makeButton(labelText, color, callback)
     return btn
 end
 
+newTab("🎯 Steal")
 makeButton("📍 Set Base (berdiri di base!)", Color3.fromRGB(200, 120, 40), function(btn)
     local hrp = getHRP()
     if hrp then
@@ -919,6 +1002,7 @@ makeToggle("Instant Steal", "InstantSteal", function(on)
     end
 end)
 
+newTab("🏃 Player")
 makeToggle("WalkSpeed", "WalkSpeed", function(on)
     if not on then
         local hum = getHumanoid()
@@ -973,17 +1057,9 @@ local function makeNumberBox(labelText, cfgKey, minV, maxV)
     end)
 end
 
+newTab("⚙️ Config")
 makeSection("PENGATURAN STEAL")
 
-if isMobile then
-    logTitle.Visible, logScroll.Visible, logBtnRow.Visible = false, false, false
-    makeButton("📋 Copy Log", Color3.fromRGB(60, 90, 160), function()
-        if setclipboard then
-            setclipboard(table.concat(LogBuffer, "\n"))
-            log("LOG", "Log disalin ✅")
-        end
-    end)
-end
 makeNumberBox("Jumlah Retry", "StealRetries", 1, 10)
 makeNumberBox("Radius Base", "HomeRadius", 10, 300)
 makeNumberBox("Kecepatan TP", "MoveStep", 4, 60)
@@ -994,6 +1070,7 @@ makeNumberBox("Range Auto Collect", "AutoCollectRange", 5, 100)
 State.FallbackAny = Config.FallbackAnyPrompt
 makeToggle("Fallback Semua Prompt", "FallbackAny", function(on) Config.FallbackAnyPrompt = on end)
 
+newTab("📍 Teleport")
 makeSection("TELEPORT")
 makeButton("🏠 Pulang ke Base", Color3.fromRGB(200, 120, 40), function()
     if HomeCFrame then
@@ -1019,6 +1096,7 @@ makeButton("💀 Reset Karakter", Color3.fromRGB(120, 50, 50), function()
     if h then h.Health = 0 end
 end)
 
+newTab("👁 Visual")
 makeSection("VISUAL")
 local espFolder = Instance.new("Folder")
 espFolder.Name = "BTDL_ESP"
@@ -1068,6 +1146,7 @@ makeToggle("Fullbright", "Fullbright", function(on)
     end
 end)
 
+newTab("🧰 Misc")
 makeSection("LAINNYA")
 LocalPlayer.Idled:Connect(function()
     if State.AntiAFK then
@@ -1115,6 +1194,9 @@ makeButton("❌ Tutup Script (Unload)", Color3.fromRGB(120, 50, 50), function()
 end)
 
 makeButton("🔍 Debug Prompts", Color3.fromRGB(90, 60, 130), debugPrompts)
+
+buildLogTab()
+selectTab("🎯 Steal")
 
 --=== TOMBOL ⚔️ MELAYANG ===--
 local bubble = Instance.new("TextButton")

@@ -1,18 +1,20 @@
 --[[
-    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v5
+    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v6
     ========================================
-    PERBAIKAN UTAMA v5:
-    ★ Smart Move — tidak ada lagi TP instan jarak jauh (ditolak server /
-      rubber-band). Gerak cepat bertahap = server menganggap kamu bergerak normal.
-    ★ Steal TERVERIFIKASI — setelah fire, script cek:
-        1. prompt hilang/nonaktif, ATAU
-        2. ada item baru masuk Backpack/inventory
-      Kalau gagal -> retry 3x.
-    ★ Fallback target — target yang menolak steal di-skip 20 detik,
-      otomatis pindah ke loot lain, lalu dicoba lagi nanti.
-    ★ Anti kejebak — noclip aktif selama seluruh siklus steal.
-    ★ Bypass anti-cheat aggressive (otomatis).
-    ★ Mobile: tombol ⚔️ melayang buka/tutup GUI.
+    v6:
+    ★ Fix UI lama ketumpuk — GUI lama dihapus dari SEMUA lokasi
+      (gethui, CoreGui, PlayerGui) saat script jalan
+    ★ Prompt "Pickup All Loot/Defenses" (milik base sendiri) di-skip —
+      tidak buang waktu retry lagi
+    ★ Smart Move glide (anti rubber-band)
+    ★ Steal terverifikasi + retry 3x + blacklist target gagal 20s
+    ★ Noclip otomatis selama siklus (anti kejebak)
+    ★ Bypass anti-cheat aggressive (otomatis)
+    ★ Mobile: tombol ⚔️ melayang buka/tutup GUI
+
+    CARA PAKAI: execute -> ⚔️ -> 📍 Set Base -> ★ Auto Steal TP ON
+    PENTING: hapus script lama di executor kamu, paste FULL yang ini.
+    GUI versi baru: judul "⚔️ BTD Loot v6" warna BIRU.
 ]]
 
 --==================================================
@@ -35,19 +37,19 @@ local Config = {
     AutoStealRange   = 20,
     AutoCollectRange = 25,
 
-    -- Auto Steal TP
     HomeRadius        = 45,
-    MoveStep          = 12,   -- studs per frame saat glide (12 ≈ aman dari rubber-band)
-    SettleTime        = 0.35, -- diam sebelum steal (server sinkron posisi)
-    StealRetries      = 3,    -- retry steal kalau server menolak
-    BlacklistTime     = 20,   -- target gagal di-skip selama ini (detik)
+    MoveStep          = 12,
+    SettleTime        = 0.35,
+    StealRetries      = 3,
+    BlacklistTime     = 20,
     ExitDistance      = 30,
     DelayPerCycle     = 0.5,
     FallbackAnyPrompt = true,
 
-    RarityFilter     = {},
-    StealKeywords    = {"steal", "claim", "loot", "rob", "hack", "take", "grab"},
-    CollectKeywords  = {"collect", "cash", "money", "pickup", "drop"},
+    RarityFilter      = {},
+    StealKeywords     = {"steal", "claim", "loot", "rob", "hack", "take", "grab"},
+    StealSkipKeywords = {"pickup"}, -- prompt berisi kata ini BUKAN target steal (tombol base sendiri)
+    CollectKeywords   = {"collect", "cash", "money", "pickup", "drop"},
 
     BlockedRemoteKeywords = {"anticheat", "anti-cheat", "anti_cheat", "cheat", "exploit", "kick", "ban", "flag", "report"},
     WhitelistKeywords     = {"steal", "loot", "collect", "claim", "cash", "buy", "shop", "build", "place", "hack"},
@@ -69,7 +71,7 @@ local State = {
 }
 
 local HomeCFrame = nil
-local blacklist  = {} -- prompt -> tick saat gagal
+local blacklist  = {}
 
 --==================================================
 -- HELPERS
@@ -158,7 +160,6 @@ local function firePrompt(prompt)
     end
 end
 
--- glide: gerak cepat bertahap (anti rubber-band)
 local function smartMove(targetPos)
     local t0 = tick()
     while tick() - t0 < 10 do
@@ -172,7 +173,6 @@ local function smartMove(targetPos)
     end
 end
 
--- snapshot isi Backpack + Tool di tangan
 local function backpackItems()
     local t = {}
     local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
@@ -240,14 +240,14 @@ local function log(tag, msg)
 end
 
 --==================================================
--- ★ BYPASS ANTI-CHEAT (aggressive — otomatis)
+-- ★ BYPASS ANTI-CHEAT (otomatis)
 --==================================================
 local function protectFn(f)
     return (newcclosure and newcclosure(f)) or f
 end
 
 local function initBypass()
-    log("BYPASS", "Memasang bypass anti-cheat (AGGRESSIVE)...")
+    log("BYPASS", "Memasang bypass anti-cheat...")
 
     if hookmetamethod and getnamecallmethod then
         local ok, err = pcall(function()
@@ -264,7 +264,7 @@ local function initBypass()
 
                 if method == "FireServer" or method == "InvokeServer" then
                     if not matches(name, Config.WhitelistKeywords) and matches(name, Config.BlockedRemoteKeywords) then
-                        log("BYPASS", "Remote diblokir: " .. name .. " (" .. method .. ")")
+                        log("BYPASS", "Remote diblokir: " .. name)
                         return
                     end
                 end
@@ -278,15 +278,12 @@ local function initBypass()
     end
 
     if hookfunction then
-        local ok, err = pcall(function()
+        pcall(function()
             hookfunction(LocalPlayer.Kick, protectFn(function(self, ...)
                 log("BYPASS", "Kick() diblokir 🛡️")
                 return
             end))
         end)
-        log("BYPASS", ok and "Hook Kick aktif ✅" or ("Hook Kick GAGAL: " .. tostring(err)))
-    else
-        log("BYPASS", "⚠️ Executor tidak support hookfunction")
     end
 
     if hookmetamethod then
@@ -301,7 +298,6 @@ local function initBypass()
                 return oldIndex(self, key)
             end))
         end)
-        log("BYPASS", "Spoof WalkSpeed aktif ✅")
     end
 
     local function tryDisable(s)
@@ -350,6 +346,9 @@ local function passesFilter(txt)
     if State.SkipHack and matches(txt, {"hack"}) then
         return false
     end
+    if matches(txt, Config.StealSkipKeywords) then
+        return false
+    end
     return true
 end
 
@@ -360,12 +359,9 @@ local function findStealTarget()
 
     local bestP, bestPart, bestDist = nil, nil, math.huge
     local fbP, fbPart, fbDist = nil, nil, math.huge
-    local totalPrompts = 0
 
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
-            totalPrompts = totalPrompts + 1
-            -- skip target yang baru saja gagal (fallback: dicoba lagi nanti)
             if blacklist[obj] and tick() - blacklist[obj] < Config.BlacklistTime then
                 continue
             end
@@ -389,8 +385,8 @@ local function findStealTarget()
         end
     end
 
-    if bestP then return bestP, bestPart, totalPrompts end
-    return fbP, fbPart, totalPrompts
+    if bestP then return bestP, bestPart end
+    return fbP, fbPart
 end
 
 local stealing = false
@@ -403,14 +399,14 @@ local function doStealCycle()
 
     if not HomeCFrame then
         HomeCFrame = hrp.CFrame
-        log("STEAL", "📍 Base otomatis di-set ke posisi sekarang")
+        log("STEAL", "📍 Base otomatis di-set")
     end
 
     local prompt, part = findStealTarget()
     if not (prompt and part) then
         if tick() - lastNoTargetLog > 5 then
             lastNoTargetLog = tick()
-            log("STEAL", "⚠️ Tidak ada target (semua ke-blacklist / tidak cocok filter)")
+            log("STEAL", "⚠️ Tidak ada target")
         end
         return
     end
@@ -418,7 +414,6 @@ local function doStealCycle()
     stealing = true
     log("STEAL", "🎯 Target: [" .. promptText(prompt) .. "] jarak " .. math.floor((part.Position - hrp.Position).Magnitude))
 
-    -- noclip SEMENTARA selama siklus (anti kejebak di dalam base)
     local originalCollide = {}
     for _, p in ipairs(char:GetDescendants()) do
         if p:IsA("BasePart") then
@@ -427,11 +422,11 @@ local function doStealCycle()
         end
     end
 
-    -- 1) MASUK (glide — bukan TP instan, biar server tidak menolak)
+    -- 1) MASUK
     smartMove(part.Position + Vector3.new(0, 2, 0))
     task.wait(Config.SettleTime)
 
-    -- 2) STEAL + VERIFIKASI (prompt hilang ATAU item masuk Backpack)
+    -- 2) STEAL + VERIFIKASI
     local before = backpackItems()
     local sukses = false
     for i = 1, Config.StealRetries do
@@ -456,10 +451,10 @@ local function doStealCycle()
 
     if not sukses then
         blacklist[prompt] = tick()
-        log("STEAL", "❌ Server tolak steal -> target di-skip " .. Config.BlacklistTime .. "s, pindah target lain")
+        log("STEAL", "❌ Server tolak steal -> skip 20s, pindah target lain")
     end
 
-    -- 3) KELUAR lalu 4) PULANG (glide, tidak kejebak karena noclip aktif)
+    -- 3) KELUAR + 4) PULANG
     local homePos = HomeCFrame.Position
     local dir = homePos - part.Position
     dir = Vector3.new(dir.X, 0, dir.Z)
@@ -468,7 +463,6 @@ local function doStealCycle()
     smartMove(homePos + Vector3.new(0, 2, 0))
     log("STEAL", "✅ Sampai base — siklus selesai")
 
-    -- kembalikan collide
     for p, v in pairs(originalCollide) do
         if p and p.Parent then
             p.CanCollide = v
@@ -613,7 +607,7 @@ local function debugPrompts()
 end
 
 --==================================================
--- GUI (mobile-friendly)
+-- GUI
 --==================================================
 local guiParent
 do
@@ -626,16 +620,29 @@ do
     end
 end
 
--- hapus GUI versi lama biar tidak ketumpuk saat execute ulang
-for _, name in ipairs({"BTDL_v5", "BTDL_v4", "BTDL_v3", "BTDL_AllInOne", "StealTools"}) do
-    pcall(function()
-        local old = guiParent:FindFirstChild(name)
-        if old then old:Destroy() end
-    end)
+-- ★ Hapus GUI lama dari SEMUA lokasi (gethui / CoreGui / PlayerGui)
+local function destroyOldGui(name)
+    local roots = {}
+    pcall(function() table.insert(roots, gethui()) end)
+    pcall(function() table.insert(roots, game:GetService("CoreGui")) end)
+    pcall(function() table.insert(roots, LocalPlayer:FindFirstChildOfClass("PlayerGui")) end)
+    for _, root in ipairs(roots) do
+        if root then
+            for _, g in ipairs(root:GetChildren()) do
+                if g:IsA("ScreenGui") and g.Name == name then
+                    pcall(function() g:Destroy() end)
+                end
+            end
+        end
+    end
+end
+
+for _, name in ipairs({"BTDL_v6", "BTDL_v5", "BTDL_v4", "BTDL_v3", "BTDL_AllInOne", "StealTools"}) do
+    destroyOldGui(name)
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "BTDL_v5"
+gui.Name = "BTDL_v6"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = guiParent
@@ -647,7 +654,7 @@ local main = Instance.new("Frame")
 main.Name = "Main"
 main.Size = UDim2.new(0, 250, 0, guiHeight)
 main.Position = UDim2.new(0.5, -125, 0.15, 0)
-main.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+main.BackgroundColor3 = Color3.fromRGB(18, 24, 34)
 main.BorderSizePixel = 0
 main.Active = true
 main.Draggable = true
@@ -659,9 +666,9 @@ mainCorner.Parent = main
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundColor3 = Color3.fromRGB(32, 32, 44)
-title.Text = "⚔️ BTD Loot v5"
-title.TextColor3 = Color3.fromRGB(255, 215, 90)
+title.BackgroundColor3 = Color3.fromRGB(24, 40, 60)
+title.Text = "⚔️ BTD Loot v6"
+title.TextColor3 = Color3.fromRGB(90, 220, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
 title.BorderSizePixel = 0
@@ -705,7 +712,7 @@ logTitle.Parent = main
 logScroll = Instance.new("ScrollingFrame")
 logScroll.Size = UDim2.new(1, -16, 0, 100)
 logScroll.Position = UDim2.new(0, 8, 0, guiHeight - 100 - 14)
-logScroll.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+logScroll.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
 logScroll.BorderSizePixel = 0
 logScroll.ScrollBarThickness = 4
 logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -767,7 +774,7 @@ end)
 
 local function styleButton(btn)
     btn.Size = UDim2.new(1, -16, 0, 32)
-    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 50, 70)
     btn.TextColor3 = Color3.fromRGB(235, 235, 235)
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 13
@@ -789,7 +796,7 @@ local function makeToggle(labelText, stateKey, onToggle)
             btn.BackgroundColor3 = Color3.fromRGB(35, 140, 80)
         else
             btn.Text = labelText .. " : OFF"
-            btn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+            btn.BackgroundColor3 = Color3.fromRGB(40, 50, 70)
         end
     end
 
@@ -894,14 +901,15 @@ makeToggle("Anti Knockback", "AntiKnockback")
 
 makeButton("🔍 Debug Prompts", Color3.fromRGB(90, 60, 130), debugPrompts)
 
+--=== TOMBOL ⚔️ MELAYANG ===--
 local bubble = Instance.new("TextButton")
 bubble.Size = UDim2.new(0, 48, 0, 48)
 bubble.Position = UDim2.new(0, 12, 0.4, 0)
-bubble.BackgroundColor3 = Color3.fromRGB(32, 32, 44)
+bubble.BackgroundColor3 = Color3.fromRGB(24, 40, 60)
 bubble.Text = "⚔️"
 bubble.TextSize = 22
 bubble.Font = Enum.Font.GothamBold
-bubble.TextColor3 = Color3.fromRGB(255, 215, 90)
+bubble.TextColor3 = Color3.fromRGB(90, 220, 255)
 bubble.BorderSizePixel = 0
 bubble.Active = true
 bubble.Draggable = true
@@ -925,7 +933,7 @@ end)
 --==================================================
 -- START
 --==================================================
-log("SYS", "Script v5 loaded ✅ " .. (isMobile and "(MOBILE 📱)" or "(PC 🖥️)"))
+log("SYS", "Script v6 loaded ✅ " .. (isMobile and "(MOBILE 📱)" or "(PC 🖥️)"))
 task.spawn(function()
     task.wait(1.5)
     initBypass()

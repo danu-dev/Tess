@@ -1198,6 +1198,81 @@ makeButton("🔍 Debug Prompts", Color3.fromRGB(90, 60, 130), debugPrompts)
 buildLogTab()
 selectTab("🎯 Steal")
 
+-- pastikan menu terbuka (tidak minimize) saat pertama jalan
+minimized = false
+body.Visible = true
+main.Size = UDim2.new(0, guiWidth, 0, guiHeight)
+minBtn.Text = "—"
+
+--=== LOG: tangkap error Roblox + simpan ke file + kirim webhook ===--
+pcall(function()
+    game:GetService("LogService").MessageOut:Connect(function(msg, mtype)
+        if mtype == Enum.MessageType.MessageError or mtype == Enum.MessageType.MessageWarning then
+            log(mtype == Enum.MessageType.MessageError and "ERR" or "WARN", string.sub(msg, 1, 160))
+        end
+    end)
+end)
+
+local LOG_FILE = "BTD_Loot_log.txt"
+local function saveLogFile()
+    if writefile then
+        pcall(writefile, LOG_FILE, table.concat(LogBuffer, "\n"))
+        return true
+    end
+    return false
+end
+task.spawn(function()
+    while true do
+        task.wait(10)
+        saveLogFile()
+    end
+end)
+
+local webhookUrl = ""
+local function sendWebhook()
+    local req = (syn and syn.request) or (http and http.request) or http_request or request
+    if webhookUrl == "" or not req then
+        log("LOG", "⚠️ Isi URL webhook Discord dulu / executor tidak support request")
+        return
+    end
+    local text = "```\n" .. string.sub(table.concat(LogBuffer, "\n"), -1800) .. "\n```"
+    local ok, err = pcall(function()
+        req({
+            Url = webhookUrl,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = game:GetService("HttpService"):JSONEncode({content = text}),
+        })
+    end)
+    log("LOG", ok and "Log terkirim ke webhook ✅" or ("Gagal kirim: " .. tostring(err)))
+end
+
+newTab("📤 Kirim Log")
+makeSection("KIRIM / SIMPAN LOG")
+makeButton("📋 Copy Semua Log", Color3.fromRGB(60, 90, 160), function()
+    if setclipboard then
+        setclipboard(table.concat(LogBuffer, "\n"))
+        log("LOG", "Log disalin ✅")
+    else
+        log("LOG", "⚠️ Executor tidak support copy")
+    end
+end)
+makeButton("💾 Simpan ke File", Color3.fromRGB(40, 110, 90), function()
+    log("LOG", saveLogFile() and ("Tersimpan: workspace/" .. LOG_FILE) or "⚠️ writefile tidak didukung")
+end)
+local whBox = Instance.new("TextBox")
+styleButton(whBox)
+whBox.PlaceholderText = "URL Webhook Discord (opsional)"
+whBox.Text = ""
+whBox.ClearTextOnFocus = false
+whBox.Parent = btnScroll
+whBox.FocusLost:Connect(function() webhookUrl = whBox.Text end)
+makeButton("📨 Kirim Log ke Webhook", Color3.fromRGB(88, 101, 242), function()
+    webhookUrl = whBox.Text
+    sendWebhook()
+end)
+selectTab("🎯 Steal")
+
 --=== TOMBOL ⚔️ MELAYANG ===--
 local bubble = Instance.new("TextButton")
 bubble.Size = UDim2.new(0, 48, 0, 48)

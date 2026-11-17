@@ -44,7 +44,9 @@ local Config = {
     BlacklistTime     = 20,
     ExitDistance      = 30,
     DelayPerCycle     = 0.5,
-    FallbackAnyPrompt = true,
+    FallbackAnyPrompt = false, -- OFF: hanya prompt "Steal" asli, tidak nyasar ke prompt lain
+    MaxTargetDistance = 200,   -- target lebih jauh dari ini diabaikan
+    Rarities          = {"Common", "Rare", "Epic", "Legendary", "Mythical", "Secret", "Vaulted", "OG"},
 
     RarityFilter      = {},
     StealKeywords     = {"steal", "claim", "loot", "rob", "hack", "take", "grab"},
@@ -375,7 +377,74 @@ end
 --==================================================
 local lastNoTargetLog = 0
 
-local function passesFilter(txt)
+--=== DETEKSI RARITY (nama/attribute/text di sekitar prompt) ===--
+local RaritySel = {}      -- rarity yang dipilih; kosong = semua
+local rarityCache = setmetatable({}, {__mode = "k"})
+
+local function hasWord(text, word)
+    return string.find(string.lower(text), "%f[%a]" .. string.lower(word) .. "%f[%A]") ~= nil
+end
+
+local function findRarityIn(text)
+    if type(text) ~= "string" or text == "" then return nil end
+    for _, r in ipairs(Config.Rarities) do
+        if hasWord(text, r) then return r end
+    end
+    return nil
+end
+
+local function detectRarity(prompt)
+    local c = rarityCache[prompt]
+    if c and (c.r or tick() - c.t < 5) then return c.r end
+
+    local found
+    local node = prompt.Parent
+    local depth = 0
+    while node and node ~= Workspace and depth < 5 and not found do
+        found = findRarityIn(node.Name)
+        if not found then
+            for k, v in pairs(node:GetAttributes()) do
+                found = findRarityIn(tostring(k)) or findRarityIn(tostring(v))
+                if found then break end
+            end
+        end
+        if not found then
+            for _, ch in ipairs(node:GetChildren()) do
+                if ch:IsA("StringValue") then
+                    found = findRarityIn(ch.Name) or findRarityIn(ch.Value)
+                elseif ch:IsA("Folder") or ch:IsA("Model") or ch:IsA("BasePart") then
+                    found = findRarityIn(ch.Name)
+                end
+                if found then break end
+            end
+        end
+        -- label teks (BillboardGui/SurfaceGui) di dalam model
+        if not found and depth >= 1 then
+            for _, d in ipairs(node:GetDescendants()) do
+                if d:IsA("TextLabel") then
+                    found = findRarityIn(d.Text)
+                    if found then break end
+                end
+            end
+        end
+        node = node.Parent
+        depth = depth + 1
+    end
+
+    rarityCache[prompt] = {r = found, t = tick()}
+    return found
+end
+
+local function rarityOK(prompt)
+    if next(RaritySel) == nil then return true end
+    local r = detectRarity(prompt)
+    return r ~= nil and RaritySel[r] == true -- rarity tak terdeteksi = dilewati
+end
+
+local function passesFilter(txt, prompt)
+    if prompt and not rarityOK(prompt) then
+        return false
+    end
     if #Config.RarityFilter > 0 and not matches(txt, Config.RarityFilter) then
         return false
     end
@@ -405,14 +474,15 @@ local function findStealTarget()
                 local part = promptPart(obj)
                 if part then
                     local distHome = (part.Position - homePos).Magnitude
-                    if distHome > Config.HomeRadius then
+                    if distHome > Config.HomeRadius
+                        and (part.Position - hrp.Position).Magnitude <= Config.MaxTargetDistance then
                         local txt = promptText(obj)
                         local dist = (part.Position - hrp.Position).Magnitude
                         if matches(txt, Config.StealKeywords) then
-                            if passesFilter(txt) and dist < bestDist then
+                            if dist < bestDist and passesFilter(txt, obj) then
                                 bestP, bestPart, bestDist = obj, part, dist
                             end
-                        elseif Config.FallbackAnyPrompt and passesFilter(txt) and dist < fbDist then
+                        elseif Config.FallbackAnyPrompt and dist < fbDist and passesFilter(txt, obj) then
                             fbP, fbPart, fbDist = obj, part, dist
                         end
                     end
@@ -660,8 +730,8 @@ local function debugPrompts()
     for obj in pairs(PromptCache) do
         if obj:IsA("ProximityPrompt") then
             n = n + 1
-            log("DEBUG", string.format("[%d] %s | Hold=%.1f | Own=%s",
-                n, promptText(obj), obj.HoldDuration, tostring(isOwnPrompt(obj))))
+            log("DEBUG", string.format("[%d] %s | Hold=%.1f | Own=%s | Rarity=%s",
+                n, promptText(obj), obj.HoldDuration, tostring(isOwnPrompt(obj)), tostring(detectRarity(obj))))
         end
     end
     log("DEBUG", "Total: " .. n .. " prompt")
@@ -1067,6 +1137,7 @@ makeNumberBox("Jumlah Retry", "StealRetries", 1, 10)
 makeNumberBox("Kecepatan TP", "MoveStep", 4, 60)
 makeNumberBox("Jeda Siklus (detik)", "DelayPerCycle", 0.1, 10)
 makeNumberBox("Blacklist (detik)", "BlacklistTime", 5, 120)
+makeNumberBox("Jarak Maks Target", "MaxTargetDistance", 20, 1000)
 State.FallbackAny = Config.FallbackAnyPrompt
 makeToggle("Fallback Semua Prompt", "FallbackAny", function(on) Config.FallbackAnyPrompt = on end)
 
@@ -1086,6 +1157,17 @@ filterBox.FocusLost:Connect(function()
 end)
 
 makeToggle("Skip Prompt Hack", "SkipHack")
+makeSection("Rarity (kosong = semua)")
+for _, r in ipairs(Config.Rarities) do
+    makeToggle(r, "R_" .. r, function(on)
+        RaritySel[r] = on or nil
+        local list = {}
+        for _, name in ipairs(Config.Rarities) do
+            if RaritySel[name] then table.insert(list, name) end
+        end
+        log("GUI", "🎯 Rarity: " .. (#list > 0 and table.concat(list, ", ") or "SEMUA"))
+    end)
+end
 
 newTab("🤏 Auto Steal")
 makeToggle("Auto Steal (tanpa TP)", "AutoSteal")

@@ -274,6 +274,8 @@ local function protectFn(f)
     return (newcclosure and newcclosure(f)) or f
 end
 
+local remoteVerdict = {}
+
 local function initBypass()
     log("BYPASS", "Memasang bypass anti-cheat...")
 
@@ -281,19 +283,25 @@ local function initBypass()
         local ok, err = pcall(function()
             local oldNamecall
             oldNamecall = hookmetamethod(game, "__namecall", protectFn(function(self, ...)
+                -- jalur cepat: mayoritas namecall langsung lewat tanpa kerja ekstra
                 local method = getnamecallmethod()
-                local name = ""
-                pcall(function() name = string.lower(self.Name) end)
-
-                if (method == "Kick" or method == "kick") and self == LocalPlayer then
-                    log("BYPASS", "Kick diblokir 🛡️")
-                    return
-                end
-
-                if method == "FireServer" or method == "InvokeServer" then
-                    if not matches(name, Config.WhitelistKeywords) and matches(name, Config.BlockedRemoteKeywords) then
-                        log("BYPASS", "Remote diblokir: " .. name)
+                if method == "Kick" or method == "kick" then
+                    if self == LocalPlayer then
+                        task.defer(log, "BYPASS", "Kick diblokir 🛡️")
                         return
+                    end
+                elseif method == "FireServer" or method == "InvokeServer" then
+                    local ok, name = pcall(function() return string.lower(self.Name) end)
+                    if ok then
+                        local c = remoteVerdict[name]
+                        if c == nil then
+                            c = (not matches(name, Config.WhitelistKeywords)) and matches(name, Config.BlockedRemoteKeywords)
+                            remoteVerdict[name] = c
+                        end
+                        if c then
+                            task.defer(log, "BYPASS", "Remote diblokir: " .. name)
+                            return
+                        end
                     end
                 end
 
@@ -318,9 +326,9 @@ local function initBypass()
         pcall(function()
             local oldIndex
             oldIndex = hookmetamethod(game, "__index", protectFn(function(self, key)
-                if not checkcaller() and typeof(self) == "Instance"
-                    and self:IsA("Humanoid") and key == "WalkSpeed"
-                    and State.WalkSpeed then
+                if key == "WalkSpeed" and State.WalkSpeed
+                    and not checkcaller() and typeof(self) == "Instance"
+                    and self:IsA("Humanoid") then
                     return 16
                 end
                 return oldIndex(self, key)
@@ -617,7 +625,7 @@ end)
 
 local akT = 0
 RunService.Heartbeat:Connect(function()
-    if State.AntiKnockback and tick() - akT > 0.2 then
+    if State.AntiKnockback and tick() - akT > 0.5 then
         akT = tick()
         local char = getChar()
         local hrp  = getHRP()
@@ -1250,9 +1258,14 @@ main.Size = UDim2.new(0, guiWidth, 0, guiHeight)
 minBtn.Text = "—"
 
 --=== LOG: tangkap error Roblox + simpan ke file + kirim webhook ===--
+local lastGameLog = 0
 pcall(function()
     game:GetService("LogService").MessageOut:Connect(function(msg, mtype)
         if mtype == Enum.MessageType.MessageError or mtype == Enum.MessageType.MessageWarning then
+            -- throttle: game yang spam error tidak boleh bikin ribuan label GUI
+            local now = tick()
+            if now - (lastGameLog or 0) < 1 then return end
+            lastGameLog = now
             log(mtype == Enum.MessageType.MessageError and "ERR" or "WARN", string.sub(msg, 1, 160))
         end
     end)

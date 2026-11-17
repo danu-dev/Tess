@@ -271,7 +271,7 @@ task.spawn(function()
     addLog("[SYSTEM] Menjalankan Tora Hub...", Color3.fromRGB(0, 255, 150))
     refreshLogUI()
     local ok, err = pcall(function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/gumanba/Scripts/main/BuildtoDefendLoot"))()
+        loadstring(game:HttpGet("https://ashlabs.me/api/game?name=Build-To-Defense-Loot.lua", true))()
     end)
     if ok then
         addLog("[SYSTEM] Tora Hub berhasil dijalankan", Color3.fromRGB(0, 255, 150))

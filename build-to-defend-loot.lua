@@ -1,23 +1,24 @@
 --[[
-    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v3 (Mobile Edition)
+    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v4 (Mobile Edition)
     =========================================================
-    ★ BYPASS ANTI-CHEAT — otomatis aktif saat script jalan:
-        - Blokir Kick
-        - Blokir remote anti-cheat mencurigakan (FireServer/InvokeServer)
-        - Matikan LocalScript anti-cheat
-    ★ AUTO STEAL TP — TP masuk base musuh -> steal -> keluar -> jalan balik ke base
-    ★ TOMBOL ⚔️ MELAYANG — tap untuk buka/tutup GUI (khusus mobile!)
-    ★ PANEL LOG — semua aksi tercatat, bisa di-copy untuk dianalisis
+    ★ BYPASS ANTI-CHEAT AGGRESSIVE — semua otomatis saat load:
+        - Blokir Kick (hookmetamethod + hookfunction)
+        - Blokir remote anti-cheat mencurigakan
+        - Matikan LocalScript AC di PlayerScripts, PlayerGui & karakter
+        - Spoof WalkSpeed: script AC membaca speed kamu sebagai 16
+    ★ AUTO STEAL TP — TP masuk -> steal -> keluar -> jalan balik (anti-nyangkut)
+        - Jalan balik pakai noclip sementara
+        - Kalau tetap kehalang -> TP langsung ke base (tidak ada lagi timeout nyangkut)
+    ★ FILTER LOOT / RARITY — pilih loot yang mau dicuri (mis: golden, secret, legendary)
+    ★ SKIP HACK — prompt "Hack" (bukan loot) otomatis di-skip
+    ★ Tombol ⚔️ melayang untuk buka/tutup GUI (mobile)
+    ★ Panel log + Copy Log
 
-    CARA PAKAI (HP/MOBILE):
-      1. Execute script -> muncul tombol ⚔️ di layar (bisa digeser)
-      2. Tap ⚔️ untuk buka GUI
-      3. Berdiri di base kamu -> tap "📍 Set Base"
+    CARA PAKAI:
+      1. Execute -> tap tombol ⚔️
+      2. Berdiri di base -> tap "📍 Set Base"
+      3. (Opsional) isi "Filter Loot", mis: golden, legendary
       4. Aktifkan "★ Auto Steal TP" -> selesai
-      5. Kalau ada masalah: tap "📋 Copy Log" -> paste kirim ke aku
-
-    PC: RightShift juga bisa buka/tutup GUI.
-    CATATAN: risiko banned ditanggung sendiri. Pakai akun cadangan.
 ]]
 
 --==================================================
@@ -44,17 +45,19 @@ local Config = {
     HomeRadius        = 45,   -- area base sendiri (studs) — prompt di sini di-skip
     StealHoldTime     = 0.5,  -- lama diam di target saat steal
     ExitDistance      = 30,   -- jarak keluar dari base musuh setelah steal
-    WalkBackTimeout   = 8,    -- batas waktu jalan balik (detik)
-    DelayPerCycle     = 0.8,  -- jeda antar siklus
-    FallbackAnyPrompt = true, -- fallback ke prompt musuh apa saja kalau keyword tak cocok
+    WalkBackTimeout   = 6,    -- batas waktu jalan balik sebelum TP paksa (detik)
+    ReturnTPFallback  = true, -- kalau jalan balik kehalang -> TP langsung ke base
+    DelayPerCycle     = 0.8,
+    FallbackAnyPrompt = true,
 
+    RarityFilter     = {},    -- ISI LEWAT GUI. contoh: {"golden","secret","legendary"} — kosong = semua
     StealKeywords    = {"steal", "claim", "loot", "rob", "hack", "take", "grab"},
     CollectKeywords  = {"collect", "cash", "money", "pickup", "drop"},
 
-    -- Bypass: remote berisi kata ini DIBLOKIR (kecuali ada kata whitelist)
+    -- Bypass
     BlockedRemoteKeywords = {"anticheat", "anti-cheat", "anti_cheat", "cheat", "exploit", "kick", "ban", "flag", "report"},
-    WhitelistKeywords     = {"steal", "loot", "collect", "claim", "cash", "buy", "shop", "build", "place"},
-    AntiCheatScriptNames  = {"anticheat", "anti-cheat", "anti_cheat", "cheatdetect", "anticheatclient"},
+    WhitelistKeywords     = {"steal", "loot", "collect", "claim", "cash", "buy", "shop", "build", "place", "hack"},
+    AntiCheatScriptNames  = {"anticheat", "anti-cheat", "anti_cheat", "cheatdetect", "anticheatclient", "clientac"},
 
     ToggleGUIKey = Enum.KeyCode.RightShift,
 }
@@ -68,6 +71,7 @@ local State = {
     NoClip        = false,
     AutoCollect   = false,
     AntiKnockback = false,
+    SkipHack      = true, -- default ON: prompt "Hack" di-skip (bukan loot)
 }
 
 local HomeCFrame = nil
@@ -160,11 +164,11 @@ local function firePrompt(prompt)
 end
 
 --==================================================
--- LOGGER (panel log di GUI + print console)
+-- LOGGER
 --==================================================
-local LogBuffer  = {}
-local logScroll  = nil -- diisi di bagian GUI
-local logLabels  = {}
+local LogBuffer = {}
+local logScroll = nil
+local logLabels = {}
 
 local function log(tag, msg)
     local line = string.format("[%s][%s] %s", os.date("%H:%M:%S"), tag, tostring(msg))
@@ -197,14 +201,14 @@ local function log(tag, msg)
 end
 
 --==================================================
--- ★ BYPASS ANTI-CHEAT (jalan otomatis saat load)
+-- ★ BYPASS ANTI-CHEAT (aggressive — semua otomatis)
 --==================================================
 local function protectFn(f)
     return (newcclosure and newcclosure(f)) or f
 end
 
 local function initBypass()
-    log("BYPASS", "Memasang bypass anti-cheat...")
+    log("BYPASS", "Memasang bypass anti-cheat (AGGRESSIVE)...")
 
     -- A. Hook __namecall: blokir Kick + remote anti-cheat
     if hookmetamethod and getnamecallmethod then
@@ -232,7 +236,7 @@ local function initBypass()
         end)
         log("BYPASS", ok and "Hook __namecall aktif ✅" or ("Hook __namecall GAGAL: " .. tostring(err)))
     else
-        log("BYPASS", "⚠️ Executor tidak support hookmetamethod — bypass remote dilewati")
+        log("BYPASS", "⚠️ Executor tidak support hookmetamethod")
     end
 
     -- B. Hook fungsi Kick langsung
@@ -245,10 +249,26 @@ local function initBypass()
         end)
         log("BYPASS", ok and "Hook Kick aktif ✅" or ("Hook Kick GAGAL: " .. tostring(err)))
     else
-        log("BYPASS", "⚠️ Executor tidak support hookfunction — hook Kick dilewati")
+        log("BYPASS", "⚠️ Executor tidak support hookfunction")
     end
 
-    -- C. Matikan LocalScript anti-cheat + jaga yang muncul belakangan
+    -- C. Spoof WalkSpeed: script AC membaca speed kamu = 16 (padahal jalan cepat)
+    if hookmetamethod then
+        local ok, err = pcall(function()
+            local oldIndex
+            oldIndex = hookmetamethod(game, "__index", protectFn(function(self, key)
+                if not checkcaller() and typeof(self) == "Instance"
+                    and self:IsA("Humanoid") and key == "WalkSpeed"
+                    and State.WalkSpeed then
+                    return 16
+                end
+                return oldIndex(self, key)
+            end))
+        end)
+        log("BYPASS", ok and "Spoof WalkSpeed aktif ✅" or ("Spoof WalkSpeed GAGAL: " .. tostring(err)))
+    end
+
+    -- D. Matikan LocalScript anti-cheat di SEMUA tempat + jaga yang baru muncul
     local function tryDisable(s)
         if s:IsA("LocalScript") and matches(s.Name, Config.AntiCheatScriptNames) then
             pcall(function() s.Disabled = true end)
@@ -256,26 +276,49 @@ local function initBypass()
         end
     end
 
-    pcall(function()
-        local ps = LocalPlayer:WaitForChild("PlayerScripts", 5)
-        if ps then
-            for _, s in ipairs(ps:GetDescendants()) do
+    local function scanRoot(root)
+        if not root then return end
+        pcall(function()
+            for _, s in ipairs(root:GetDescendants()) do
                 tryDisable(s)
             end
-            ps.DescendantAdded:Connect(function(s)
+            root.DescendantAdded:Connect(function(s)
                 task.wait(0.1)
                 tryDisable(s)
             end)
-        end
+        end)
+    end
+
+    task.spawn(function() scanRoot(LocalPlayer:WaitForChild("PlayerScripts", 5)) end)
+    task.spawn(function() scanRoot(LocalPlayer:WaitForChild("PlayerGui", 5)) end)
+    task.spawn(function()
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        scanRoot(char)
+    end)
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        task.wait(0.5)
+        scanRoot(char)
     end)
 
-    log("BYPASS", "Bypass selesai 🛡️ (cek log di atas: kalau semua GAGAL berarti executor kurang fitur)")
+    log("BYPASS", "Bypass selesai 🛡️")
 end
 
 --==================================================
--- ★ AUTO STEAL TP (fitur utama)
+-- ★ AUTO STEAL TP
 --==================================================
 local lastNoTargetLog = 0
+
+local function passesFilter(txt)
+    -- filter rarity: kalau diisi, HANYA loot yang mengandung kata filter
+    if #Config.RarityFilter > 0 and not matches(txt, Config.RarityFilter) then
+        return false
+    end
+    -- skip prompt Hack (bukan loot)
+    if State.SkipHack and matches(txt, {"hack"}) then
+        return false
+    end
+    return true
+end
 
 local function findStealTarget()
     local hrp = getHRP()
@@ -284,7 +327,7 @@ local function findStealTarget()
 
     local bestP, bestPart, bestDist = nil, nil, math.huge
     local fbP, fbPart, fbDist = nil, nil, math.huge
-    local totalPrompts = 0
+    local totalPrompts, skipped = 0, 0
 
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
@@ -294,12 +337,17 @@ local function findStealTarget()
                 if part then
                     local distHome = (part.Position - homePos).Magnitude
                     if distHome > Config.HomeRadius then
+                        local txt = promptText(obj)
                         local dist = (part.Position - hrp.Position).Magnitude
-                        if matches(promptText(obj), Config.StealKeywords) then
-                            if dist < bestDist then
-                                bestP, bestPart, bestDist = obj, part, dist
+                        if matches(txt, Config.StealKeywords) then
+                            if passesFilter(txt) then
+                                if dist < bestDist then
+                                    bestP, bestPart, bestDist = obj, part, dist
+                                end
+                            else
+                                skipped = skipped + 1
                             end
-                        elseif Config.FallbackAnyPrompt and dist < fbDist then
+                        elseif Config.FallbackAnyPrompt and passesFilter(txt) and dist < fbDist then
                             fbP, fbPart, fbDist = obj, part, dist
                         end
                     end
@@ -308,8 +356,8 @@ local function findStealTarget()
         end
     end
 
-    if bestP then return bestP, bestPart, totalPrompts end
-    return fbP, fbPart, totalPrompts
+    if bestP then return bestP, bestPart, totalPrompts, skipped end
+    return fbP, fbPart, totalPrompts, skipped
 end
 
 local stealing = false
@@ -328,11 +376,15 @@ local function doStealCycle()
         log("STEAL", "📍 Base otomatis di-set ke posisi sekarang")
     end
 
-    local prompt, part, totalPrompts = findStealTarget()
+    local prompt, part, totalPrompts, skipped = findStealTarget()
     if not (prompt and part) then
         if tick() - lastNoTargetLog > 5 then
             lastNoTargetLog = tick()
-            log("STEAL", "⚠️ Tidak ada target (" .. totalPrompts .. " prompt terdeteksi). Tap Debug Prompts lalu kirim log ke aku.")
+            if skipped and skipped > 0 and #Config.RarityFilter > 0 then
+                log("STEAL", "⚠️ Tidak ada loot yang cocok filter: " .. table.concat(Config.RarityFilter, ", "))
+            else
+                log("STEAL", "⚠️ Tidak ada target (" .. totalPrompts .. " prompt). Tap Debug Prompts.")
+            end
         end
         return
     end
@@ -360,24 +412,50 @@ local function doStealCycle()
     log("STEAL", "🚪 Keluar base musuh")
     task.wait(0.2)
 
-    -- 4) JALAN balik ke base
+    -- 4) JALAN balik — pakai noclip SEMENTARA biar tidak kehalang tembok
     local hum = getHumanoid()
     if hum then
         log("STEAL", "🏃 Jalan balik ke base...")
+
+        -- simpan kondisi collide asli, lalu tembus sementara
+        local originalCollide = {}
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then
+                originalCollide[p] = p.CanCollide
+                p.CanCollide = false
+            end
+        end
+
         hum:MoveTo(homePos)
+        local arrived = false
         local t0 = tick()
         while tick() - t0 < Config.WalkBackTimeout do
             local h = getHRP()
             if not h then break end
             if (h.Position - homePos).Magnitude < 10 then
-                log("STEAL", "✅ Sampai base — siklus selesai")
+                arrived = true
                 break
             end
             task.wait(0.2)
         end
-        if tick() - t0 >= Config.WalkBackTimeout then
-            log("STEAL", "⚠️ Timeout jalan balik (kehalang sesuatu?)")
+
+        -- kembalikan collide seperti semula
+        for p, v in pairs(originalCollide) do
+            if p and p.Parent then
+                p.CanCollide = v
+            end
         end
+
+        if arrived then
+            log("STEAL", "✅ Sampai base — siklus selesai")
+        elseif Config.ReturnTPFallback then
+            -- FIX TIMEOUT: kehalang? langsung TP pulang, tidak buang waktu
+            char:PivotTo(HomeCFrame)
+            log("STEAL", "🌀 Jalan kehalang -> TP langsung ke base ✅")
+        else
+            log("STEAL", "⚠️ Timeout jalan balik")
+        end
+
         local h = getHRP()
         if h then hum:MoveTo(h.Position) end -- stop
     end
@@ -534,7 +612,7 @@ do
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "BTDL_v3"
+gui.Name = "BTDL_v4"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = guiParent
@@ -559,7 +637,7 @@ mainCorner.Parent = main
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundColor3 = Color3.fromRGB(32, 32, 44)
-title.Text = "⚔️ BTD Loot v3"
+title.Text = "⚔️ BTD Loot v4"
 title.TextColor3 = Color3.fromRGB(255, 215, 90)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -570,7 +648,6 @@ local titleCorner = Instance.new("UICorner")
 titleCorner.CornerRadius = UDim.new(0, 10)
 titleCorner.Parent = title
 
--- Area tombol (scrollable biar muat di layar HP)
 local btnScroll = Instance.new("ScrollingFrame")
 btnScroll.Size = UDim2.new(1, 0, 0, guiHeight - 30 - 20 - 100 - 32)
 btnScroll.Position = UDim2.new(0, 0, 0, 32)
@@ -591,7 +668,6 @@ local btnPad = Instance.new("UIPadding")
 btnPad.PaddingTop = UDim.new(0, 6)
 btnPad.Parent = btnScroll
 
--- Header log
 local logTitle = Instance.new("TextLabel")
 logTitle.Size = UDim2.new(1, 0, 0, 16)
 logTitle.Position = UDim2.new(0, 8, 0, guiHeight - 100 - 30)
@@ -603,7 +679,6 @@ logTitle.TextSize = 11
 logTitle.TextXAlignment = Enum.TextXAlignment.Left
 logTitle.Parent = main
 
--- Panel log (scrollable)
 logScroll = Instance.new("ScrollingFrame")
 logScroll.Size = UDim2.new(1, -16, 0, 100)
 logScroll.Position = UDim2.new(0, 8, 0, guiHeight - 100 - 14)
@@ -622,7 +697,6 @@ local logLayout = Instance.new("UIListLayout")
 logLayout.SortOrder = Enum.SortOrder.LayoutOrder
 logLayout.Parent = logScroll
 
--- Baris tombol log: Copy / Clear
 local logBtnRow = Instance.new("Frame")
 logBtnRow.Size = UDim2.new(1, -16, 0, 26)
 logBtnRow.Position = UDim2.new(0, 8, 1, -30)
@@ -656,9 +730,9 @@ copyBtn.MouseButton1Click:Connect(function()
     local text = table.concat(LogBuffer, "\n")
     if setclipboard then
         setclipboard(text)
-        log("LOG", "Log disalin ✅ paste & kirim ke aku untuk analisis")
+        log("LOG", "Log disalin ✅ paste & kirim ke aku")
     else
-        log("LOG", "⚠️ Executor tidak support copy — screenshot log ini lalu kirim")
+        log("LOG", "⚠️ Executor tidak support copy — screenshot log ini")
     end
 end)
 
@@ -668,7 +742,6 @@ clearBtn.MouseButton1Click:Connect(function()
     LogBuffer = {}
 end)
 
---=== FACTORY TOMBOL ===--
 local function styleButton(btn)
     btn.Size = UDim2.new(1, -16, 0, 32)
     btn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
@@ -749,6 +822,25 @@ makeButton("▶ Steal TP Sekali", Color3.fromRGB(60, 90, 160), function()
     task.spawn(doStealCycle)
 end)
 
+-- Filter loot / rarity
+local filterBox = Instance.new("TextBox")
+styleButton(filterBox)
+filterBox.PlaceholderText = "Filter loot: golden, secret..."
+filterBox.Text = ""
+filterBox.Parent = btnScroll
+filterBox.FocusLost:Connect(function()
+    Config.RarityFilter = {}
+    for word in string.gmatch(string.lower(filterBox.Text), "[^,%s]+") do
+        table.insert(Config.RarityFilter, word)
+    end
+    if #Config.RarityFilter > 0 then
+        log("GUI", "🎯 Filter loot aktif: " .. table.concat(Config.RarityFilter, ", "))
+    else
+        log("GUI", "🎯 Filter loot: SEMUA loot")
+    end
+end)
+
+makeToggle("Skip Prompt Hack", "SkipHack")
 makeToggle("Auto Steal (tanpa TP)", "AutoSteal")
 
 makeToggle("Instant Steal", "InstantSteal", function(on)
@@ -786,7 +878,7 @@ makeToggle("Anti Knockback", "AntiKnockback")
 
 makeButton("🔍 Debug Prompts", Color3.fromRGB(90, 60, 130), debugPrompts)
 
---=== TOMBOL ⚔️ MELAYANG (buka/tutup GUI — mobile) ===--
+--=== TOMBOL ⚔️ MELAYANG ===--
 local bubble = Instance.new("TextButton")
 bubble.Size = UDim2.new(0, 48, 0, 48)
 bubble.Position = UDim2.new(0, 12, 0.4, 0)
@@ -808,7 +900,6 @@ bubble.MouseButton1Click:Connect(function()
     main.Visible = not main.Visible
 end)
 
--- PC: RightShift buka/tutup
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Config.ToggleGUIKey then
@@ -819,9 +910,9 @@ end)
 --==================================================
 -- START
 --==================================================
-log("SYS", "Script v3 loaded ✅ " .. (isMobile and "(mode MOBILE 📱)" or "(mode PC 🖥️)"))
+log("SYS", "Script v4 loaded ✅ " .. (isMobile and "(mode MOBILE 📱)" or "(mode PC 🖥️)"))
 log("SYS", "Tap tombol ⚔️ untuk buka/tutup GUI")
 task.spawn(function()
-    task.wait(1.5) -- kasih waktu game load
+    task.wait(1.5)
     initBypass()
 end)

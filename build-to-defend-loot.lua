@@ -1,28 +1,29 @@
 --[[
-    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE SCRIPT
-    ============================================
-    Fitur:
-      1. Auto Steal        — otomatis steal/claim loot di sekitar
+    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v2
+    ========================================
+    Fitur utama:
+      ★ AUTO STEAL TP  — TP masuk ke base musuh -> steal -> keluar -> jalan balik ke base
+      1. Auto Steal        — otomatis steal/claim loot di sekitar (tanpa TP)
       2. Instant Steal     — menghapus waktu tahan (hold) saat steal
-      3. Steal TP          — teleport ke target steal terdekat
+      3. Steal TP          — tombol manual: 1x siklus steal (masuk -> steal -> pulang)
       4. WalkSpeed         — atur kecepatan jalan
       5. Infinite Jump     — lompat tanpa batas
       6. NoClip            — tembus tembok / pertahanan base musuh
       7. Auto Collect      — otomatis ambil cash / loot drop di sekitar
       8. Anti Knockback    — anti terpental saat diserang
 
-    CARA PAKAI:
-      1. Buka executor (Delta, Fluxus, Codex, Wave, dll)
-      2. Join game "Build to Defend Loot"
-      3. Copy-paste seluruh isi file ini -> Execute
+    CARA PAKAI AUTO STEAL TP:
+      1. Berdiri di base kamu -> tekan tombol "📍 Set Base"
+      2. Aktifkan "Auto Steal TP"
+      3. Script akan: TP ke loot musuh terdekat -> steal -> keluar -> jalan balik ke base
       4. Tekan RightShift untuk buka/tutup GUI
 
-    CATATAN:
-      - Game ini punya anti-cheat. Saat pakai Instant/Auto Steal,
-        ambil lalu menjauh sedikit sebelum claim ulang biar lebih aman.
-      - Kalau Auto Steal / Auto Collect tidak jalan, tambahkan kata
-        kunci prompt di game ke Config.StealKeywords / Config.CollectKeywords.
-      - Risiko banned ditanggung sendiri. Sebaiknya pakai akun cadangan.
+    KALAU STEAL TIDAK KEDETEKSI:
+      - Tekan tombol "🔍 Debug Prompts" lalu lihat console executor (F9 / console)
+      - Lihat tulisan Action/Object prompt steal di game, tambahkan kata itu
+        ke Config.StealKeywords di bawah.
+
+    CATATAN: game ini punya anti-cheat. Risiko banned ditanggung sendiri.
 ]]
 
 --==================================================
@@ -40,16 +41,26 @@ local LocalPlayer = Players.LocalPlayer
 -- KONFIGURASI (ubah sesuai kebutuhan)
 --==================================================
 local Config = {
-    WalkSpeedValue   = 50,   -- kecepatan saat WalkSpeed ON
-    AutoStealRange   = 20,   -- jarak maksimal Auto Steal (studs)
-    AutoCollectRange = 25,   -- jarak maksimal Auto Collect (studs)
-    ScanDelay        = 0.25, -- jeda scan Auto Steal / Auto Collect (detik)
-    StealKeywords    = {"steal", "claim", "loot", "rob", "hack"},
-    CollectKeywords  = {"collect", "cash", "money", "pickup", "take", "drop"},
-    ToggleGUIKey     = Enum.KeyCode.RightShift, -- tombol buka/tutup GUI
+    WalkSpeedValue   = 50,    -- kecepatan saat WalkSpeed ON
+    ScanDelay        = 0.2,   -- jeda scan Auto Steal / Auto Collect (detik)
+    AutoStealRange   = 20,    -- jarak Auto Steal biasa (studs)
+    AutoCollectRange = 25,    -- jarak Auto Collect (studs)
+
+    --=== PENGATURAN AUTO STEAL TP ===--
+    HomeRadius       = 45,    -- prompt dalam radius ini dari base dianggap MILIK SENDIRI (di-skip)
+    StealHoldTime    = 0.5,   -- lama diam di target saat steal (detik)
+    ExitDistance     = 30,    -- jarak keluar dari base musuh setelah steal (studs)
+    WalkBackTimeout  = 8,     -- batas waktu jalan balik ke base (detik)
+    DelayPerCycle    = 0.8,   -- jeda antar siklus Auto Steal TP
+    FallbackAnyPrompt = true, -- kalau tidak ada prompt cocok keyword, pakai prompt musuh apa saja
+
+    StealKeywords    = {"steal", "claim", "loot", "rob", "hack", "take", "grab"},
+    CollectKeywords  = {"collect", "cash", "money", "pickup", "drop"},
+    ToggleGUIKey     = Enum.KeyCode.RightShift,
 }
 
 local State = {
+    AutoStealTP   = false,
     AutoSteal     = false,
     InstantSteal  = false,
     WalkSpeed     = false,
@@ -58,6 +69,8 @@ local State = {
     AutoCollect   = false,
     AntiKnockback = false,
 }
+
+local HomeCFrame = nil -- posisi base kamu (di-set lewat tombol Set Base)
 
 --==================================================
 -- HELPERS
@@ -107,10 +120,37 @@ local function promptPart(prompt)
     return nil
 end
 
--- fireproximityprompt dengan fallback kalau executor tidak support
+-- deteksi apakah prompt ini milik base sendiri
+local function isOwnPrompt(prompt)
+    local myName    = string.lower(LocalPlayer.Name)
+    local myDisplay = string.lower(LocalPlayer.DisplayName)
+
+    local node = prompt.Parent
+    while node and node ~= Workspace and node ~= game do
+        local n = string.lower(node.Name)
+        if string.find(n, myName, 1, true) or (myDisplay ~= "" and string.find(n, myDisplay, 1, true)) then
+            return true
+        end
+        local owner = node:FindFirstChild("Owner") or node:FindFirstChild("owner")
+        if owner then
+            if owner:IsA("ObjectValue") and owner.Value == LocalPlayer then
+                return true
+            elseif owner:IsA("StringValue") then
+                local v = string.lower(owner.Value)
+                if v == myName or v == myDisplay then
+                    return true
+                end
+            end
+        end
+        node = node.Parent
+    end
+    return false
+end
+
 local function firePrompt(prompt)
+    pcall(function() prompt.HoldDuration = 0 end)
     if fireproximityprompt then
-        fireproximityprompt(prompt)
+        pcall(function() fireproximityprompt(prompt) end)
     else
         pcall(function()
             prompt:InputHoldBegin()
@@ -119,6 +159,101 @@ local function firePrompt(prompt)
         end)
     end
 end
+
+--==================================================
+-- ★ AUTO STEAL TP
+--==================================================
+local function findStealTarget()
+    local hrp = getHRP()
+    if not hrp then return nil, nil end
+    local homePos = HomeCFrame and HomeCFrame.Position or hrp.Position
+
+    local bestP, bestPart, bestDist = nil, nil, math.huge
+    local fbP, fbPart, fbDist = nil, nil, math.huge
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and not isOwnPrompt(obj) then
+            local part = promptPart(obj)
+            if part then
+                local distHome = (part.Position - homePos).Magnitude
+                if distHome > Config.HomeRadius then -- skip area base sendiri
+                    local dist = (part.Position - hrp.Position).Magnitude
+                    if matches(promptText(obj), Config.StealKeywords) then
+                        if dist < bestDist then
+                            bestP, bestPart, bestDist = obj, part, dist
+                        end
+                    elseif Config.FallbackAnyPrompt and dist < fbDist then
+                        fbP, fbPart, fbDist = obj, part, dist
+                    end
+                end
+            end
+        end
+    end
+
+    if bestP then return bestP, bestPart end
+    return fbP, fbPart
+end
+
+local stealing = false
+
+local function doStealCycle()
+    if stealing then return end
+    local char = getChar()
+    local hrp  = getHRP()
+    if not (char and hrp) then return end
+
+    -- kalau belum set base, pakai posisi sekarang
+    if not HomeCFrame then
+        HomeCFrame = hrp.CFrame
+    end
+
+    local prompt, part = findStealTarget()
+    if not (prompt and part) then return end
+
+    stealing = true
+
+    -- 1) TP MASUK ke loot musuh
+    char:PivotTo(part.CFrame + Vector3.new(0, 2, 0))
+    task.wait(0.15)
+
+    -- 2) STEAL (instant + fire beberapa kali biar pasti)
+    firePrompt(prompt)
+    task.wait(Config.StealHoldTime)
+    firePrompt(prompt)
+
+    -- 3) KELUAR base musuh (TP sedikit menjauh ke arah base sendiri)
+    local homePos = HomeCFrame.Position
+    local dir = (homePos - part.Position)
+    dir = Vector3.new(dir.X, 0, dir.Z)
+    if dir.Magnitude < 1 then dir = Vector3.new(0, 0, 1) end
+    local exitPos = part.Position + dir.Unit * Config.ExitDistance + Vector3.new(0, 2, 0)
+    char:PivotTo(CFrame.new(exitPos))
+    task.wait(0.2)
+
+    -- 4) JALAN balik ke base (MoveTo = terlihat natural, lebih aman dari anti-cheat)
+    local hum = getHumanoid()
+    if hum then
+        hum:MoveTo(homePos)
+        local t0 = tick()
+        while tick() - t0 < Config.WalkBackTimeout do
+            local h = getHRP()
+            if not h or (h.Position - homePos).Magnitude < 10 then break end
+            task.wait(0.2)
+        end
+        hum:Move(Vector3.new(0, 0, 0)) -- stop
+    end
+
+    stealing = false
+end
+
+task.spawn(function()
+    while true do
+        task.wait(Config.DelayPerCycle)
+        if State.AutoStealTP then
+            pcall(doStealCycle)
+        end
+    end
+end)
 
 --==================================================
 -- 2. INSTANT STEAL (HoldDuration = 0)
@@ -136,7 +271,7 @@ ProximityPromptService.PromptShown:Connect(function(prompt)
 end)
 
 --==================================================
--- 1 + 7. AUTO STEAL & AUTO COLLECT (loop scan)
+-- 1 + 7. AUTO STEAL & AUTO COLLECT (tanpa TP)
 --==================================================
 task.spawn(function()
     while true do
@@ -150,18 +285,15 @@ task.spawn(function()
                         if part then
                             local txt  = promptText(obj)
                             local dist = (part.Position - hrp.Position).Magnitude
-                            if State.AutoSteal
-                                and dist <= Config.AutoStealRange
-                                and matches(txt, Config.StealKeywords) then
+                            if State.AutoSteal and dist <= Config.AutoStealRange
+                                and matches(txt, Config.StealKeywords) and not isOwnPrompt(obj) then
                                 pcall(firePrompt, obj)
-                            elseif State.AutoCollect
-                                and dist <= Config.AutoCollectRange
+                            elseif State.AutoCollect and dist <= Config.AutoCollectRange
                                 and matches(txt, Config.CollectKeywords) then
                                 pcall(firePrompt, obj)
                             end
                         end
                     elseif State.AutoCollect and obj:IsA("TouchInterest") then
-                        -- cash / loot drop berbasis sentuhan
                         local part = obj.Parent
                         if part and part:IsA("BasePart")
                             and matches(part.Name, Config.CollectKeywords)
@@ -177,33 +309,6 @@ task.spawn(function()
         end
     end
 end)
-
---==================================================
--- 3. STEAL TP (teleport ke target steal terdekat)
---==================================================
-local function stealTP()
-    local char = getChar()
-    local hrp  = getHRP()
-    if not (char and hrp) then return end
-
-    local bestPart, bestDist = nil, math.huge
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") and matches(promptText(obj), Config.StealKeywords) then
-            local part = promptPart(obj)
-            if part then
-                local dist = (part.Position - hrp.Position).Magnitude
-                if dist < bestDist then
-                    bestDist = dist
-                    bestPart = part
-                end
-            end
-        end
-    end
-
-    if bestPart then
-        char:PivotTo(bestPart.CFrame + Vector3.new(0, 3, 0))
-    end
-end
 
 --==================================================
 -- 4. WALKSPEED
@@ -259,7 +364,6 @@ RunService.Heartbeat:Connect(function()
                     v:Destroy()
                 end
             end
-            -- redam kecepatan horizontal ekstrem (ciri khas knockback)
             local v = hrp.AssemblyLinearVelocity
             local horizontal = Vector3.new(v.X, 0, v.Z)
             if horizontal.Magnitude > 100 then
@@ -268,6 +372,27 @@ RunService.Heartbeat:Connect(function()
         end
     end
 end)
+
+--==================================================
+-- DEBUG: lihat semua prompt di console (F9)
+--==================================================
+local function debugPrompts()
+    print("========== DAFTAR PROMPT ==========")
+    local n = 0
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            n = n + 1
+            print(string.format(
+                "[%d] Name=%s | Action=%s | Object=%s | Parent=%s | Hold=%.1f | Own=%s",
+                n, obj.Name, obj.ActionText, obj.ObjectText,
+                (obj.Parent and obj.Parent.Name) or "?",
+                obj.HoldDuration,
+                tostring(isOwnPrompt(obj))
+            ))
+        end
+    end
+    print("Total prompt: " .. n .. " — kirim hasil ini kalau steal belum kedeteksi")
+end
 
 --==================================================
 -- GUI
@@ -291,8 +416,8 @@ gui.Parent = guiParent
 
 local main = Instance.new("Frame")
 main.Name = "Main"
-main.Size = UDim2.new(0, 240, 0, 440)
-main.Position = UDim2.new(0.5, -120, 0.3, 0)
+main.Size = UDim2.new(0, 240, 0, 560)
+main.Position = UDim2.new(0.5, -120, 0.2, 0)
 main.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
 main.BorderSizePixel = 0
 main.Active = true
@@ -306,7 +431,7 @@ mainCorner.Parent = main
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 36)
 title.BackgroundColor3 = Color3.fromRGB(32, 32, 44)
-title.Text = "⚔️ Build to Defend Loot"
+title.Text = "⚔️ Build to Defend Loot v2"
 title.TextColor3 = Color3.fromRGB(255, 215, 90)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -370,32 +495,53 @@ local function makeToggle(labelText, stateKey, onToggle)
     end)
 
     refresh()
+    return btn
 end
 
-local function makeButton(labelText, callback)
+local function makeButton(labelText, color, callback)
     local btn = Instance.new("TextButton")
     styleButton(btn)
     btn.Text = labelText
-    btn.BackgroundColor3 = Color3.fromRGB(60, 90, 160)
+    btn.BackgroundColor3 = color
     btn.Parent = container
     btn.MouseButton1Click:Connect(function()
-        pcall(callback)
+        pcall(callback, btn)
     end)
+    return btn
 end
 
--- Urutan tombol sesuai permintaan
-makeToggle("Auto Steal", "AutoSteal")
+--=== TOMBOL UTAMA: AUTO STEAL TP ===--
+makeButton("📍 Set Base (berdiri di base dulu!)", Color3.fromRGB(200, 120, 40), function(btn)
+    local hrp = getHRP()
+    if hrp then
+        HomeCFrame = hrp.CFrame
+        btn.Text = "✅ Base tersimpan!"
+        task.wait(1)
+        btn.Text = "📍 Set Base (berdiri di base dulu!)"
+    end
+end)
+
+makeToggle("★ Auto Steal TP", "AutoStealTP", function(on)
+    if on and not HomeCFrame then
+        local hrp = getHRP()
+        if hrp then HomeCFrame = hrp.CFrame end
+    end
+end)
+
+makeButton("▶ Steal TP Sekali", Color3.fromRGB(60, 90, 160), function()
+    task.spawn(doStealCycle)
+end)
+
+--=== FITUR LAIN ===--
+makeToggle("Auto Steal (tanpa TP)", "AutoSteal")
 
 makeToggle("Instant Steal", "InstantSteal", function(on)
     if on then
-        -- terapkan juga ke prompt yang sudah ada
         for _, o in ipairs(Workspace:GetDescendants()) do
             pcall(applyInstant, o)
         end
     end
 end)
-
-makeButton("Steal TP (ke target terdekat)", stealTP)
 
 makeToggle("WalkSpeed", "WalkSpeed", function(on)
     if not on then
@@ -422,7 +568,9 @@ makeToggle("NoClip", "NoClip")
 makeToggle("Auto Collect", "AutoCollect")
 makeToggle("Anti Knockback", "AntiKnockback")
 
--- Tombol buka/tutup GUI
+makeButton("🔍 Debug Prompts (lihat console)", Color3.fromRGB(90, 60, 130), debugPrompts)
+
+-- Buka/tutup GUI
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Config.ToggleGUIKey then
@@ -430,4 +578,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
-print("[BTDL] Script loaded ✅ | Tekan RightShift untuk buka/tutup GUI")
+print("[BTDL v2] Script loaded ✅ | Tekan RightShift untuk GUI | Set Base dulu sebelum Auto Steal TP")

@@ -33,7 +33,7 @@ local LocalPlayer = Players.LocalPlayer
 --==================================================
 local Config = {
     WalkSpeedValue   = 50,
-    ScanDelay        = 0.2,
+    ScanDelay        = 0.5,
     AutoStealRange   = 20,
     AutoCollectRange = 25,
 
@@ -72,6 +72,20 @@ local State = {
 
 local HomeCFrame = nil
 local blacklist  = {}
+
+-- CACHE prompt/touch (scan sekali, update lewat event) => ringan
+local PromptCache = {}
+local ownCache = setmetatable({}, {__mode = "k"})
+do
+    local function track(o)
+        if o:IsA("ProximityPrompt") or o:IsA("TouchInterest") then
+            PromptCache[o] = true
+        end
+    end
+    for o in pairs(PromptCache) do track(o) end
+    Workspace.DescendantAdded:Connect(track)
+    Workspace.DescendantRemoving:Connect(function(o) PromptCache[o] = nil; ownCache[o] = nil end)
+end
 
 --==================================================
 -- HELPERS
@@ -121,7 +135,7 @@ local function promptPart(prompt)
     return nil
 end
 
-local function isOwnPrompt(prompt)
+local function isOwnPromptRaw(prompt)
     local myName    = string.lower(LocalPlayer.Name)
     local myDisplay = string.lower(LocalPlayer.DisplayName)
 
@@ -145,6 +159,15 @@ local function isOwnPrompt(prompt)
         node = node.Parent
     end
     return false
+end
+
+local function isOwnPrompt(prompt)
+    local c = ownCache[prompt]
+    if c == nil then
+        c = isOwnPromptRaw(prompt)
+        ownCache[prompt] = c
+    end
+    return c
 end
 
 local function firePrompt(prompt)
@@ -365,7 +388,7 @@ local function findStealTarget()
     local bestP, bestPart, bestDist = nil, nil, math.huge
     local fbP, fbPart, fbDist = nil, nil, math.huge
 
-    for _, obj in ipairs(Workspace:GetDescendants()) do
+    for obj in pairs(PromptCache) do
         if obj:IsA("ProximityPrompt") then
             if blacklist[obj] and tick() - blacklist[obj] < Config.BlacklistTime then
                 continue
@@ -521,7 +544,7 @@ task.spawn(function()
         if State.AutoSteal or State.AutoCollect then
             local hrp = getHRP()
             if hrp then
-                for _, obj in ipairs(Workspace:GetDescendants()) do
+                for obj in pairs(PromptCache) do
                     if obj:IsA("ProximityPrompt") then
                         local part = promptPart(obj)
                         if part then
@@ -573,21 +596,29 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
+local ncParts, ncT = {}, 0
 RunService.Stepped:Connect(function()
     if State.NoClip then
         local char = getChar()
         if char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
+            if tick() - ncT > 1 then
+                ncT = tick()
+                ncParts = {}
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then table.insert(ncParts, part) end
                 end
+            end
+            for _, part in ipairs(ncParts) do
+                if part.CanCollide then part.CanCollide = false end
             end
         end
     end
 end)
 
+local akT = 0
 RunService.Heartbeat:Connect(function()
-    if State.AntiKnockback then
+    if State.AntiKnockback and tick() - akT > 0.2 then
+        akT = tick()
         local char = getChar()
         local hrp  = getHRP()
         if char and hrp then
@@ -612,7 +643,7 @@ end)
 local function debugPrompts()
     log("DEBUG", "===== DAFTAR PROMPT =====")
     local n = 0
-    for _, obj in ipairs(Workspace:GetDescendants()) do
+    for obj in pairs(PromptCache) do
         if obj:IsA("ProximityPrompt") then
             n = n + 1
             log("DEBUG", string.format("[%d] %s | Hold=%.1f | Own=%s",
@@ -1050,7 +1081,7 @@ newTab("⚡ Instant Steal")
 
 makeToggle("Instant Steal", "InstantSteal", function(on)
     if on then
-        for _, o in ipairs(Workspace:GetDescendants()) do
+        for o in pairs(PromptCache) do
             pcall(applyInstant, o)
         end
     end
@@ -1112,11 +1143,11 @@ espFolder.Name = "BTDL_ESP"
 espFolder.Parent = gui
 task.spawn(function()
     while true do
-        task.wait(1.5)
-        espFolder:ClearAllChildren()
+        task.wait(3)
+        if State.ESP or #espFolder:GetChildren() > 0 then espFolder:ClearAllChildren() end
         if State.ESP then
             local n = 0
-            for _, obj in ipairs(Workspace:GetDescendants()) do
+            for obj in pairs(PromptCache) do
                 if n >= 60 then break end
                 if obj:IsA("ProximityPrompt") and matches(promptText(obj), Config.StealKeywords) and not isOwnPrompt(obj) then
                     local part = promptPart(obj)

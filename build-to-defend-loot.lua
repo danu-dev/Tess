@@ -626,6 +626,14 @@ do
     end
 end
 
+-- hapus GUI versi lama biar tidak ketumpuk saat execute ulang
+for _, name in ipairs({"BTDL_v5", "BTDL_v4", "BTDL_v3", "BTDL_AllInOne", "StealTools"}) do
+    pcall(function()
+        local old = guiParent:FindFirstChild(name)
+        if old then old:Destroy() end
+    end)
+end
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "BTDL_v5"
 gui.ResetOnSpawn = false

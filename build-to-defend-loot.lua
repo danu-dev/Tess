@@ -148,16 +148,21 @@ local function isOwnPrompt(prompt)
 end
 
 local function firePrompt(prompt)
-    pcall(function() prompt.HoldDuration = 0 end)
+    pcall(function()
+        prompt.HoldDuration = 0
+        prompt.RequiresLineOfSight = false
+        prompt.MaxActivationDistance = math.max(prompt.MaxActivationDistance, 30)
+        prompt.Enabled = true
+    end)
     if fireproximityprompt then
-        pcall(function() fireproximityprompt(prompt) end)
-    else
-        pcall(function()
-            prompt:InputHoldBegin()
-            task.wait()
-            prompt:InputHoldEnd()
-        end)
+        pcall(function() fireproximityprompt(prompt, 1) end)
     end
+    -- fallback/tambahan: simulasi tekan manual (lebih ampuh di mobile executor)
+    pcall(function()
+        prompt:InputHoldBegin()
+        task.wait(0.05)
+        prompt:InputHoldEnd()
+    end)
 end
 
 local function smartMove(targetPos)
@@ -424,13 +429,24 @@ local function doStealCycle()
 
     -- 1) MASUK
     smartMove(part.Position + Vector3.new(0, 2, 0))
+    -- tempel tepat di target supaya masuk jarak prompt
+    pcall(function() char:PivotTo(CFrame.new(part.Position + Vector3.new(0, 2.5, 0))) end)
     task.wait(Config.SettleTime)
 
     -- 2) STEAL + VERIFIKASI
     local before = backpackItems()
     local sukses = false
     for i = 1, Config.StealRetries do
-        firePrompt(prompt)
+        -- pastikan tetap menempel di target tiap percobaan
+        local h = getHRP()
+        if h then
+            h.AssemblyLinearVelocity = Vector3.zero
+            pcall(function() char:PivotTo(CFrame.new(part.Position + Vector3.new(0, 2.5, 0))) end)
+        end
+        for _ = 1, 3 do
+            firePrompt(prompt)
+            task.wait(0.1)
+        end
         task.wait(0.35)
 
         if not (prompt and prompt.Parent and prompt.Enabled) then
@@ -648,16 +664,45 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = guiParent
 
 local isMobile = UserInputService.TouchEnabled
-local guiHeight = isMobile and 360 or 430
+local viewport = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 400)
+local guiWidth  = isMobile and math.clamp(viewport.X * 0.5, 230, 300) or 250
+local guiHeight = isMobile and math.clamp(viewport.Y * 0.85, 200, 340) or 430
+local btnHeight = isMobile and 40 or 32
+local logHeight = isMobile and 60 or 100
+
+-- drag universal (mouse + touch)
+local function makeDraggable(handle, target, onTap)
+    local dragging, startPos, startInput, moved = false, nil, nil, false
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging, moved = true, false
+            startPos, startInput = target.Position, input.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    if not moved and onTap then onTap() end
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local d = input.Position - startInput
+            if d.Magnitude > 6 then moved = true end
+            if moved then
+                target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+            end
+        end
+    end)
+end
 
 local main = Instance.new("Frame")
 main.Name = "Main"
-main.Size = UDim2.new(0, 250, 0, guiHeight)
-main.Position = UDim2.new(0.5, -125, 0.15, 0)
+main.Size = UDim2.new(0, guiWidth, 0, guiHeight)
+main.Position = UDim2.new(0.5, -guiWidth / 2, 0.08, 0)
 main.BackgroundColor3 = Color3.fromRGB(18, 24, 34)
 main.BorderSizePixel = 0
 main.Active = true
-main.Draggable = true
 main.Parent = gui
 
 local mainCorner = Instance.new("UICorner")
@@ -679,7 +724,7 @@ titleCorner.CornerRadius = UDim.new(0, 10)
 titleCorner.Parent = title
 
 local btnScroll = Instance.new("ScrollingFrame")
-btnScroll.Size = UDim2.new(1, 0, 0, guiHeight - 30 - 20 - 100 - 32)
+btnScroll.Size = UDim2.new(1, 0, 0, guiHeight - 30 - 20 - logHeight - 32)
 btnScroll.Position = UDim2.new(0, 0, 0, 32)
 btnScroll.BackgroundTransparency = 1
 btnScroll.BorderSizePixel = 0
@@ -700,7 +745,7 @@ btnPad.Parent = btnScroll
 
 local logTitle = Instance.new("TextLabel")
 logTitle.Size = UDim2.new(1, 0, 0, 16)
-logTitle.Position = UDim2.new(0, 8, 0, guiHeight - 100 - 30)
+logTitle.Position = UDim2.new(0, 8, 0, guiHeight - logHeight - 30)
 logTitle.BackgroundTransparency = 1
 logTitle.Text = "📜 LOG:"
 logTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -710,8 +755,8 @@ logTitle.TextXAlignment = Enum.TextXAlignment.Left
 logTitle.Parent = main
 
 logScroll = Instance.new("ScrollingFrame")
-logScroll.Size = UDim2.new(1, -16, 0, 100)
-logScroll.Position = UDim2.new(0, 8, 0, guiHeight - 100 - 14)
+logScroll.Size = UDim2.new(1, -16, 0, logHeight)
+logScroll.Position = UDim2.new(0, 8, 0, guiHeight - logHeight - 14)
 logScroll.BackgroundColor3 = Color3.fromRGB(10, 14, 20)
 logScroll.BorderSizePixel = 0
 logScroll.ScrollBarThickness = 4
@@ -773,7 +818,7 @@ clearBtn.MouseButton1Click:Connect(function()
 end)
 
 local function styleButton(btn)
-    btn.Size = UDim2.new(1, -16, 0, 32)
+    btn.Size = UDim2.new(1, -16, 0, btnHeight)
     btn.BackgroundColor3 = Color3.fromRGB(40, 50, 70)
     btn.TextColor3 = Color3.fromRGB(235, 235, 235)
     btn.Font = Enum.Font.GothamBold
@@ -899,6 +944,166 @@ makeToggle("NoClip", "NoClip")
 makeToggle("Auto Collect", "AutoCollect")
 makeToggle("Anti Knockback", "AntiKnockback")
 
+--=== OPSI TAMBAHAN ===--
+local function makeSection(text)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, -16, 0, 20)
+    l.BackgroundTransparency = 1
+    l.Text = "── " .. text .. " ──"
+    l.TextColor3 = Color3.fromRGB(90, 220, 255)
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 12
+    l.Parent = btnScroll
+end
+
+local function makeNumberBox(labelText, cfgKey, minV, maxV)
+    local box = Instance.new("TextBox")
+    styleButton(box)
+    box.Text = labelText .. ": " .. tostring(Config[cfgKey])
+    box.PlaceholderText = labelText .. " (" .. minV .. "-" .. maxV .. ")"
+    box.ClearTextOnFocus = true
+    box.Parent = btnScroll
+    box.FocusLost:Connect(function()
+        local n = tonumber(string.match(box.Text, "-?[%d%.]+"))
+        if n then
+            Config[cfgKey] = math.clamp(n, minV, maxV)
+            log("CFG", labelText .. " = " .. Config[cfgKey])
+        end
+        box.Text = labelText .. ": " .. tostring(Config[cfgKey])
+    end)
+end
+
+makeSection("PENGATURAN STEAL")
+makeNumberBox("Jumlah Retry", "StealRetries", 1, 10)
+makeNumberBox("Radius Base", "HomeRadius", 10, 300)
+makeNumberBox("Kecepatan TP", "MoveStep", 4, 60)
+makeNumberBox("Jeda Siklus (detik)", "DelayPerCycle", 0.1, 10)
+makeNumberBox("Blacklist (detik)", "BlacklistTime", 5, 120)
+makeNumberBox("Range Auto Steal", "AutoStealRange", 5, 100)
+makeNumberBox("Range Auto Collect", "AutoCollectRange", 5, 100)
+State.FallbackAny = Config.FallbackAnyPrompt
+makeToggle("Fallback Semua Prompt", "FallbackAny", function(on) Config.FallbackAnyPrompt = on end)
+
+makeSection("TELEPORT")
+makeButton("🏠 Pulang ke Base", Color3.fromRGB(200, 120, 40), function()
+    if HomeCFrame then
+        local c = getChar()
+        if c then c:PivotTo(HomeCFrame + Vector3.new(0, 3, 0)) end
+        log("TP", "Pulang ke base")
+    else
+        log("TP", "⚠️ Base belum di-set")
+    end
+end)
+makeButton("🎯 TP ke Target Terdekat", Color3.fromRGB(60, 90, 160), function()
+    local _, part = findStealTarget()
+    local c = getChar()
+    if part and c then
+        c:PivotTo(CFrame.new(part.Position + Vector3.new(0, 3, 0)))
+        log("TP", "TP ke target")
+    else
+        log("TP", "⚠️ Tidak ada target")
+    end
+end)
+makeButton("💀 Reset Karakter", Color3.fromRGB(120, 50, 50), function()
+    local h = getHumanoid()
+    if h then h.Health = 0 end
+end)
+
+makeSection("VISUAL")
+local espFolder = Instance.new("Folder")
+espFolder.Name = "BTDL_ESP"
+espFolder.Parent = gui
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        espFolder:ClearAllChildren()
+        if State.ESP then
+            local n = 0
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if n >= 60 then break end
+                if obj:IsA("ProximityPrompt") and matches(promptText(obj), Config.StealKeywords) and not isOwnPrompt(obj) then
+                    local part = promptPart(obj)
+                    if part then
+                        n = n + 1
+                        local bb = Instance.new("BillboardGui")
+                        bb.Adornee = part
+                        bb.AlwaysOnTop = true
+                        bb.Size = UDim2.new(0, 120, 0, 20)
+                        bb.StudsOffset = Vector3.new(0, 3, 0)
+                        local t = Instance.new("TextLabel")
+                        t.Size = UDim2.new(1, 0, 1, 0)
+                        t.BackgroundTransparency = 1
+                        t.Text = "💰 " .. (obj.ObjectText ~= "" and obj.ObjectText or part.Name)
+                        t.TextColor3 = Color3.fromRGB(255, 220, 60)
+                        t.TextStrokeTransparency = 0
+                        t.Font = Enum.Font.GothamBold
+                        t.TextSize = 12
+                        t.Parent = bb
+                        bb.Parent = espFolder
+                    end
+                end
+            end
+        end
+    end
+end)
+makeToggle("ESP Loot", "ESP")
+
+local Lighting = game:GetService("Lighting")
+local oldLight = {Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd}
+makeToggle("Fullbright", "Fullbright", function(on)
+    if on then
+        Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = 2, 14, 1e5
+    else
+        Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = oldLight.Brightness, oldLight.ClockTime, oldLight.FogEnd
+    end
+end)
+
+makeSection("LAINNYA")
+LocalPlayer.Idled:Connect(function()
+    if State.AntiAFK then
+        pcall(function()
+            local vu = game:GetService("VirtualUser")
+            vu:CaptureController()
+            vu:ClickButton2(Vector2.new())
+        end)
+    end
+end)
+State.AntiAFK = true
+makeToggle("Anti AFK", "AntiAFK")
+
+makeToggle("Fly (Mobile/PC)", "Fly")
+RunService.Heartbeat:Connect(function()
+    if State.Fly then
+        local hrp, hum = getHRP(), getHumanoid()
+        if hrp and hum then
+            local cam = Workspace.CurrentCamera
+            local dir = hum.MoveDirection
+            local vy = 0
+            if hum.Jump then vy = 50 end
+            hrp.AssemblyLinearVelocity = Vector3.new(dir.X * Config.WalkSpeedValue, vy, dir.Z * Config.WalkSpeedValue)
+                + Vector3.new(0, 1.9, 0)
+        end
+    end
+end)
+
+makeToggle("Auto Reset Kalau Mati", "AutoRespawnBase")
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if State.AutoRespawnBase and HomeCFrame then
+        task.wait(1)
+        pcall(function() char:PivotTo(HomeCFrame + Vector3.new(0, 3, 0)) end)
+    end
+end)
+
+makeButton("🔄 Rejoin Server", Color3.fromRGB(90, 60, 130), function()
+    local TS = game:GetService("TeleportService")
+    pcall(function() TS:Teleport(game.PlaceId, LocalPlayer) end)
+end)
+makeButton("❌ Tutup Script (Unload)", Color3.fromRGB(120, 50, 50), function()
+    for k in pairs(State) do State[k] = false end
+    espFolder:ClearAllChildren()
+    gui:Destroy()
+end)
+
 makeButton("🔍 Debug Prompts", Color3.fromRGB(90, 60, 130), debugPrompts)
 
 --=== TOMBOL ⚔️ MELAYANG ===--
@@ -912,16 +1117,16 @@ bubble.Font = Enum.Font.GothamBold
 bubble.TextColor3 = Color3.fromRGB(90, 220, 255)
 bubble.BorderSizePixel = 0
 bubble.Active = true
-bubble.Draggable = true
 bubble.Parent = gui
+
+makeDraggable(title, main)
+makeDraggable(bubble, bubble, function()
+    main.Visible = not main.Visible
+end)
 
 local bubbleCorner = Instance.new("UICorner")
 bubbleCorner.CornerRadius = UDim.new(1, 0)
 bubbleCorner.Parent = bubble
-
-bubble.MouseButton1Click:Connect(function()
-    main.Visible = not main.Visible
-end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end

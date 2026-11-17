@@ -1,85 +1,83 @@
---[[
-    ⚔️ BUILD TO DEFEND LOOT — ALL-IN-ONE v7
-    ========================================
-    v7:
-    ★ UI baru: modern, ringan, 5 tab (Steal, Filter, Player, Misc, Log)
-      — tab dibangun lazy, log hanya 1 TextLabel
-    ★ Filter rarity (Common..OG), jarak maks target, fallback OFF
-    v6:
-    ★ Fix UI lama ketumpuk — GUI lama dihapus dari SEMUA lokasi
-      (gethui, CoreGui, PlayerGui) saat script jalan
-    ★ Prompt "Pickup All Loot/Defenses" (milik base sendiri) di-skip —
-      tidak buang waktu retry lagi
-    ★ Smart Move glide (anti rubber-band)
-    ★ Steal terverifikasi + retry 3x + blacklist target gagal 20s
-    ★ Noclip otomatis selama siklus (anti kejebak)
-    ★ Bypass anti-cheat aggressive (otomatis)
-    ★ Mobile: tombol ⚔️ melayang buka/tutup GUI
-
-    CARA PAKAI: execute -> ⚔️ -> 📍 Set Base -> ★ Auto Steal TP ON
-    PENTING: hapus script lama di executor kamu, paste FULL yang ini.
-    GUI versi baru: judul "⚔️ BTD Loot v6" warna BIRU.
-]]
-
---==================================================
--- SERVICES
---==================================================
+-- Services
 local Players                = game:GetService("Players")
 local RunService             = game:GetService("RunService")
 local UserInputService       = game:GetService("UserInputService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local Workspace              = game:GetService("Workspace")
+local HttpService            = game:GetService("HttpService")
+local TeleportService        = game:GetService("TeleportService")
+local Lighting               = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 
---==================================================
--- KONFIGURASI
---==================================================
+-- Config
 local Config = {
-    WalkSpeedValue   = 50,
-    ScanDelay        = 0.5,
-    AutoStealRange   = 20,
-    AutoCollectRange = 25,
+    WalkSpeedValue        = 50,
+    ScanDelay             = 0.5,
+    AutoStealRange        = 20,
+    AutoCollectRange      = 25,
+    HomeRadius            = 45,
+    MoveStep              = 12,
 
-    HomeRadius        = 45,
-    MoveStep          = 12,
-    SettleTime        = 0.35,
-    StealRetries      = 3,
-    BlacklistTime     = 20,
-    ExitDistance      = 30,
-    DelayPerCycle     = 0.5,
-    FallbackAnyPrompt = false, -- OFF: hanya prompt "Steal" asli, tidak nyasar ke prompt lain
-    MaxTargetDistance = 200,   -- target lebih jauh dari ini diabaikan
-    Rarities          = {"Common", "Rare", "Epic", "Legendary", "Mythical", "Secret", "Vaulted", "OG"},
+    -- Anti Anomali & Exit
+    HumanMode             = true,
+    SkyExit               = true,
+    ExitHeight            = 30,
+    AntiTouch             = true,
+    NormalMoveSpeed       = 60,
+    JitterDelay           = 0.25,
+    SettleTime            = 0.35,
+    StealRetries          = 3,
+    BlacklistTime         = 20,
+    ExitDistance          = 30,
+    DelayPerCycle         = 0.5,
+    FallbackAnyPrompt     = false,
+    MaxTargetDistance     = 200,
 
-    RarityFilter      = {},
-    StealKeywords     = {"steal", "claim", "loot", "rob", "hack", "take", "grab"},
-    StealSkipKeywords = {"pickup"}, -- prompt berisi kata ini BUKAN target steal (tombol base sendiri)
-    CollectKeywords   = {"collect", "cash", "money", "pickup", "drop"},
+    Rarities              = {"Common", "Rare", "Epic", "Legendary", "Mythical", "Secret", "Vaulted", "OG"},
+    RarityFilter          = {},
+    StealKeywords         = {"steal", "claim", "loot", "rob", "hack", "take", "grab"},
+    StealSkipKeywords     = {"pickup"},
+    CollectKeywords       = {"collect", "cash", "money", "pickup", "drop"},
 
-    BlockedRemoteKeywords = {"anticheat", "anti-cheat", "anti_cheat", "cheat", "exploit", "kick", "ban", "flag", "report"},
+    BlockedRemoteKeywords = {
+        "anticheat", "anti-cheat", "anti_cheat", "cheat", "exploit",
+        "kick", "ban", "flag", "report", "anomaly", "anomali",
+        "lootreturn", "returnloot", "resetloot", "dropitem", "wallhack",
+        "noclip", "punish", "security", "guard"
+    },
     WhitelistKeywords     = {"steal", "loot", "collect", "claim", "cash", "buy", "shop", "build", "place", "hack"},
-    AntiCheatScriptNames  = {"anticheat", "anti-cheat", "anti_cheat", "cheatdetect", "anticheatclient", "clientac"},
+    AntiCheatScriptNames  = {"anticheat", "anti-cheat", "anti_cheat", "cheatdetect", "anticheatclient", "clientac", "security", "anomaly"},
 
-    ToggleGUIKey = Enum.KeyCode.RightShift,
+    ToggleGUIKey          = Enum.KeyCode.RightShift,
 }
 
+-- State
 local State = {
-    AutoStealTP   = false,
-    AutoSteal     = false,
-    InstantSteal  = false,
-    WalkSpeed     = false,
-    InfiniteJump  = false,
-    NoClip        = false,
-    AutoCollect   = false,
-    AntiKnockback = false,
-    SkipHack      = true,
+    AutoStealTP     = false,
+    AutoSteal       = false,
+    InstantSteal    = false,
+    WalkSpeed       = false,
+    InfiniteJump    = false,
+    NoClip          = false,
+    Fly             = false,
+    AutoCollect     = false,
+    AntiKnockback   = false,
+    SkipHack        = true,
+    HumanMode       = true,
+    SkyExit         = true,
+    AntiTouch       = true,
+    AntiAFK         = true,
+    AutoRespawnBase = false,
+    ESP             = false,
+    Fullbright      = false,
+    FallbackAny     = false,
 }
 
 local HomeCFrame = nil
 local blacklist  = {}
 
--- CACHE prompt/touch (scan sekali, update lewat event) => ringan
+-- Prompt Cache
 local PromptCache = {}
 local ownCache = setmetatable({}, {__mode = "k"})
 do
@@ -90,12 +88,13 @@ do
     end
     for o in pairs(PromptCache) do track(o) end
     Workspace.DescendantAdded:Connect(track)
-    Workspace.DescendantRemoving:Connect(function(o) PromptCache[o] = nil; ownCache[o] = nil end)
+    Workspace.DescendantRemoving:Connect(function(o)
+        PromptCache[o] = nil
+        ownCache[o] = nil
+    end)
 end
 
---==================================================
--- HELPERS
---==================================================
+-- Helpers
 local function getChar()
     return LocalPlayer.Character
 end
@@ -186,7 +185,6 @@ local function firePrompt(prompt)
     if fireproximityprompt then
         pcall(function() fireproximityprompt(prompt, 1) end)
     end
-    -- fallback/tambahan: simulasi tekan manual (lebih ampuh di mobile executor)
     pcall(function()
         prompt:InputHoldBegin()
         task.wait(0.05)
@@ -194,32 +192,83 @@ local function firePrompt(prompt)
     end)
 end
 
+-- Movement & Anti-Anomali
 local function smartMove(targetPos)
-    local t0 = tick()
-    while tick() - t0 < 10 do
-        local char, hrp = getChar(), getHRP()
+    local char, hrp = getChar(), getHRP()
+    if not (char and hrp) then return end
+    local distTotal = (targetPos - hrp.Position).Magnitude
+    local maxSpeed  = math.max(Config.NormalMoveSpeed, 20)
+    local maxTime   = math.max(15, (distTotal / maxSpeed) * 1.5 + 5)
+    local t0        = tick()
+
+    while tick() - t0 < maxTime do
+        char, hrp = getChar(), getHRP()
         if not (char and hrp) then return end
+
         local delta = targetPos - hrp.Position
         local dist  = delta.Magnitude
-        if dist <= 4 then break end
-        char:PivotTo(CFrame.new(hrp.Position + delta.Unit * math.min(Config.MoveStep, dist)))
-        RunService.Heartbeat:Wait()
+        if dist <= 3.5 then break end
+
+        local dt = RunService.Heartbeat:Wait()
+        local step
+        if Config.HumanMode then
+            step = math.max(Config.NormalMoveSpeed * dt, 0.6)
+        else
+            step = Config.MoveStep
+        end
+
+        local moveDir  = delta.Unit
+        local moveDist = math.min(step, dist)
+        char:PivotTo(CFrame.new(hrp.Position + moveDir * moveDist))
+
+        pcall(function()
+            hrp.AssemblyLinearVelocity = moveDir * math.min(Config.NormalMoveSpeed, 50)
+        end)
+    end
+
+    hrp = getHRP()
+    if hrp then
+        pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero end)
     end
 end
 
+local function jwait(base)
+    task.wait(base + math.random() * Config.JitterDelay)
+end
+
+local function humanSteal(prompt)
+    local hold = 0
+    pcall(function() hold = prompt.HoldDuration or 0 end)
+    pcall(function()
+        prompt.RequiresLineOfSight = false
+        prompt.MaxActivationDistance = math.max(prompt.MaxActivationDistance, 15)
+    end)
+    pcall(function() prompt:InputHoldBegin() end)
+    if hold > 0 then
+        jwait(hold)
+    else
+        jwait(0.1)
+    end
+    pcall(function() prompt:InputHoldEnd() end)
+    if fireproximityprompt then
+        pcall(function() fireproximityprompt(prompt, 1) end)
+    end
+end
+
+-- Inventory
 local function backpackItems()
     local t = {}
     local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
     if bp then
-        for _, i in ipairs(bp:GetChildren()) do
-            t[i.Name] = (t[i.Name] or 0) + 1
+        for _, it in ipairs(bp:GetChildren()) do
+            t[it.Name] = (t[it.Name] or 0) + 1
         end
     end
-    local char = getChar()
-    if char then
-        for _, i in ipairs(char:GetChildren()) do
-            if i:IsA("Tool") then
-                t[i.Name] = (t[i.Name] or 0) + 1
+    local c = getChar()
+    if c then
+        for _, it in ipairs(c:GetChildren()) do
+            if it:IsA("Tool") then
+                t[it.Name] = (t[it.Name] or 0) + 1
             end
         end
     end
@@ -236,54 +285,74 @@ local function findNewItem(before)
     return nil
 end
 
---==================================================
--- LOGGER
---==================================================
-local LogBuffer = {}
-local logScroll, logLabel = nil, nil
-local logPending = false
+-- Logger
+local LogBuffer    = {}
+local logScroll    = nil
+local logLabel     = nil
+local logPending   = false
+local lastLogTag   = ""
+local lastLogMsg   = ""
+local repeatCount  = 1
 
 local function refreshLog()
     logPending = false
     if logLabel then
-        logLabel.Text = table.concat(LogBuffer, "\n", math.max(1, #LogBuffer - 39))
+        local startIdx = math.max(1, #LogBuffer - 120)
+        local lines = {}
+        for i = startIdx, #LogBuffer do
+            table.insert(lines, LogBuffer[i])
+        end
+        logLabel.Text = table.concat(lines, "\n")
         task.defer(function()
-            pcall(function() logScroll.CanvasPosition = Vector2.new(0, 1e6) end)
+            pcall(function()
+                if logScroll then
+                    logScroll.CanvasPosition = Vector2.new(0, 1e6)
+                end
+            end)
         end)
     end
 end
 
 local function log(tag, msg)
-    local line = string.format("[%s][%s] %s", os.date("%H:%M:%S"), tag, tostring(msg))
-    print(line)
-    table.insert(LogBuffer, line)
-    if #LogBuffer > 200 then
-        table.remove(LogBuffer, 1)
+    local text = tostring(msg)
+    local now  = os.date("%H:%M:%S")
+
+    if tag == lastLogTag and text == lastLogMsg and #LogBuffer > 0 then
+        repeatCount = repeatCount + 1
+        LogBuffer[#LogBuffer] = string.format("[%s][%s] %s (x%d)", now, tag, text, repeatCount)
+    else
+        lastLogTag  = tag
+        lastLogMsg  = text
+        repeatCount = 1
+        local line  = string.format("[%s][%s] %s", now, tag, text)
+        print(line)
+        table.insert(LogBuffer, line)
+        if #LogBuffer > 500 then
+            table.remove(LogBuffer, 1)
+        end
     end
-    -- satu TextLabel saja, di-update paling cepat tiap 0.3 dtk (ringan)
+
     if logLabel and not logPending then
         logPending = true
-        task.delay(0.3, refreshLog)
+        task.delay(0.2, refreshLog)
     end
 end
 
---==================================================
--- ★ BYPASS ANTI-CHEAT (otomatis)
---==================================================
+-- Bypass Anti-Cheat
 local function protectFn(f)
     return (newcclosure and newcclosure(f)) or f
 end
 
 local remoteVerdict = {}
+local remoteBlockedOnce = {}
 
 local function initBypass()
-    log("BYPASS", "Memasang bypass anti-cheat...")
+    log("BYPASS", "Mengaktifkan bypass anti-cheat...")
 
     if hookmetamethod and getnamecallmethod then
         local ok, err = pcall(function()
             local oldNamecall
             oldNamecall = hookmetamethod(game, "__namecall", protectFn(function(self, ...)
-                -- jalur cepat: mayoritas namecall langsung lewat tanpa kerja ekstra
                 local method = getnamecallmethod()
                 if method == "Kick" or method == "kick" then
                     if self == LocalPlayer then
@@ -291,26 +360,26 @@ local function initBypass()
                         return
                     end
                 elseif method == "FireServer" or method == "InvokeServer" then
-                    local ok, name = pcall(function() return string.lower(self.Name) end)
-                    if ok then
+                    local okName, name = pcall(function() return string.lower(self.Name) end)
+                    if okName then
                         local c = remoteVerdict[name]
                         if c == nil then
                             c = (not matches(name, Config.WhitelistKeywords)) and matches(name, Config.BlockedRemoteKeywords)
                             remoteVerdict[name] = c
                         end
                         if c then
-                            task.defer(log, "BYPASS", "Remote diblokir: " .. name)
+                            if not remoteBlockedOnce[name] then
+                                remoteBlockedOnce[name] = true
+                                task.defer(log, "BYPASS", "Remote diblokir: " .. name)
+                            end
                             return
                         end
                     end
                 end
-
                 return oldNamecall(self, ...)
             end))
         end)
-        log("BYPASS", ok and "Hook __namecall aktif ✅" or ("Hook __namecall GAGAL: " .. tostring(err)))
-    else
-        log("BYPASS", "⚠️ Executor tidak support hookmetamethod")
+        log("BYPASS", ok and "Hook __namecall aktif ✅" or ("Hook __namecall gagal: " .. tostring(err)))
     end
 
     if hookfunction then
@@ -339,7 +408,7 @@ local function initBypass()
     local function tryDisable(s)
         if s:IsA("LocalScript") and matches(s.Name, Config.AntiCheatScriptNames) then
             pcall(function() s.Disabled = true end)
-            log("BYPASS", "Anti-cheat dimatikan: " .. s:GetFullName())
+            log("BYPASS", "Script dimatikan: " .. s.Name)
         end
     end
 
@@ -367,16 +436,11 @@ local function initBypass()
         scanRoot(char)
     end)
 
-    log("BYPASS", "Bypass selesai 🛡️")
+    log("BYPASS", "Bypass siap 🛡️")
 end
 
---==================================================
--- ★ AUTO STEAL TP
---==================================================
-local lastNoTargetLog = 0
-
---=== DETEKSI RARITY (nama/attribute/text di sekitar prompt) ===--
-local RaritySel = {}      -- rarity yang dipilih; kosong = semua
+-- Rarity & Filter
+local RaritySel = {}
 local rarityCache = setmetatable({}, {__mode = "k"})
 
 local function hasWord(text, word)
@@ -395,7 +459,7 @@ local function detectRarity(prompt)
     local c = rarityCache[prompt]
     if c and (c.r or tick() - c.t < 5) then return c.r end
 
-    local found
+    local found = nil
     local node = prompt.Parent
     local depth = 0
     while node and node ~= Workspace and depth < 5 and not found do
@@ -416,7 +480,6 @@ local function detectRarity(prompt)
                 if found then break end
             end
         end
-        -- label teks (BillboardGui/SurfaceGui) di dalam model
         if not found and depth >= 1 then
             for _, d in ipairs(node:GetDescendants()) do
                 if d:IsA("TextLabel") then
@@ -436,7 +499,7 @@ end
 local function rarityOK(prompt)
     if next(RaritySel) == nil then return true end
     local r = detectRarity(prompt)
-    return r ~= nil and RaritySel[r] == true -- rarity tak terdeteksi = dilewati
+    return r ~= nil and RaritySel[r] == true
 end
 
 local function passesFilter(txt, prompt)
@@ -455,33 +518,33 @@ local function passesFilter(txt, prompt)
     return true
 end
 
+-- Steal Target
+local lastNoTargetLog = 0
+
 local function findStealTarget()
     local hrp = getHRP()
     if not hrp then return nil, nil end
     local homePos = HomeCFrame and HomeCFrame.Position or hrp.Position
 
     local bestP, bestPart, bestDist = nil, nil, math.huge
-    local fbP, fbPart, fbDist = nil, nil, math.huge
+    local fbP, fbPart, fbDist       = nil, nil, math.huge
 
     for obj in pairs(PromptCache) do
         if obj:IsA("ProximityPrompt") then
-            if blacklist[obj] and tick() - blacklist[obj] < Config.BlacklistTime then
-                continue
-            end
-            if not isOwnPrompt(obj) then
+            local isBl = blacklist[obj] and (tick() - blacklist[obj] < Config.BlacklistTime)
+            if not isBl and not isOwnPrompt(obj) then
                 local part = promptPart(obj)
                 if part then
                     local distHome = (part.Position - homePos).Magnitude
-                    if distHome > Config.HomeRadius
-                        and (part.Position - hrp.Position).Magnitude <= Config.MaxTargetDistance then
+                    local distHrp  = (part.Position - hrp.Position).Magnitude
+                    if distHome > Config.HomeRadius and distHrp <= Config.MaxTargetDistance then
                         local txt = promptText(obj)
-                        local dist = (part.Position - hrp.Position).Magnitude
                         if matches(txt, Config.StealKeywords) then
-                            if dist < bestDist and passesFilter(txt, obj) then
-                                bestP, bestPart, bestDist = obj, part, dist
+                            if distHrp < bestDist and passesFilter(txt, obj) then
+                                bestP, bestPart, bestDist = obj, part, distHrp
                             end
-                        elseif Config.FallbackAnyPrompt and dist < fbDist and passesFilter(txt, obj) then
-                            fbP, fbPart, fbDist = obj, part, dist
+                        elseif Config.FallbackAnyPrompt and distHrp < fbDist and passesFilter(txt, obj) then
+                            fbP, fbPart, fbDist = obj, part, distHrp
                         end
                     end
                 end
@@ -493,6 +556,7 @@ local function findStealTarget()
     return fbP, fbPart
 end
 
+-- Steal Cycle
 local stealing = false
 
 local function doStealCycle()
@@ -503,40 +567,47 @@ local function doStealCycle()
 
     if not HomeCFrame then
         HomeCFrame = hrp.CFrame
-        log("STEAL", "📍 Base otomatis di-set")
+        log("BASE", "📍 Base otomatis di-set di lokasi saat ini")
     end
 
     local prompt, part = findStealTarget()
     if not (prompt and part) then
-        if tick() - lastNoTargetLog > 5 then
+        if tick() - lastNoTargetLog > 15 then
             lastNoTargetLog = tick()
-            log("STEAL", "⚠️ Tidak ada target")
+            log("STEAL", "⚠️ Tidak ada target dalam radius")
         end
         return
     end
 
     stealing = true
-    log("STEAL", "🎯 Target: [" .. promptText(prompt) .. "] jarak " .. math.floor((part.Position - hrp.Position).Magnitude))
+    local targetTxt    = promptText(prompt)
+    local targetDist   = math.floor((part.Position - hrp.Position).Magnitude)
+    local targetRarity = detectRarity(prompt) or "Normal"
+    log("STEAL", string.format("🎯 Target: [%s] (%s) %dm", targetTxt, targetRarity, targetDist))
 
     local originalCollide = {}
+    local originalTouch   = {}
     for _, p in ipairs(char:GetDescendants()) do
         if p:IsA("BasePart") then
             originalCollide[p] = p.CanCollide
+            originalTouch[p]   = p.CanTouch
             p.CanCollide = false
+            if Config.AntiTouch then
+                p.CanTouch = false
+            end
         end
     end
 
-    -- 1) MASUK
+    -- 1) Mendekati target
+    log("STEAL", "🏃 Menuju target...")
     smartMove(part.Position + Vector3.new(0, 2, 0))
-    -- tempel tepat di target supaya masuk jarak prompt
     pcall(function() char:PivotTo(CFrame.new(part.Position + Vector3.new(0, 2.5, 0))) end)
-    task.wait(Config.SettleTime)
+    jwait(Config.SettleTime)
 
-    -- 2) STEAL + VERIFIKASI
+    -- 2) Eksekusi steal
     local before = backpackItems()
     local sukses = false
 
-    -- kunci posisi tiap frame (anti jatuh karena CanCollide off / konveyor bergerak)
     local lockConn = RunService.Heartbeat:Connect(function()
         local h = getHRP()
         if h and part and part.Parent then
@@ -544,50 +615,85 @@ local function doStealCycle()
             h.AssemblyLinearVelocity = Vector3.zero
         end
     end)
-    task.wait(0.4) -- beri waktu server menerima posisi baru
+    jwait(0.3)
 
+    log("STEAL", "🖐️ Memulai interaksi loot...")
     for i = 1, Config.StealRetries do
-        for _ = 1, 3 do
-            firePrompt(prompt)
-            task.wait(0.1)
+        if Config.HumanMode then
+            humanSteal(prompt)
+        else
+            for _ = 1, 3 do
+                firePrompt(prompt)
+                task.wait(0.08)
+            end
         end
-        task.wait(0.5)
+        jwait(0.4)
 
         if not (prompt and prompt.Parent and prompt.Enabled) then
             sukses = true
-            log("STEAL", "✅ Steal SUKSES (prompt hilang)")
+            log("STEAL", "✅ Steal berhasil (prompt selesai)")
             break
         end
 
         local newItem = findNewItem(before)
         if newItem then
             sukses = true
-            log("STEAL", "✅ MASUK INVENTORY: " .. newItem)
+            log("STEAL", "✅ Item masuk tas: " .. tostring(newItem))
             break
         end
 
-        log("STEAL", "🔁 Retry " .. i .. "/" .. Config.StealRetries)
+        log("STEAL", string.format("🔁 Retry %d/%d", i, Config.StealRetries))
     end
 
     lockConn:Disconnect()
+
     if not sukses then
         blacklist[prompt] = tick()
-        log("STEAL", "❌ Server tolak steal -> skip 20s, pindah target lain")
+        log("STEAL", "❌ Server tolak steal -> blacklist 20s, ganti target")
+    else
+        log("STEAL", "🎉 Steal berhasil! Memulai proses keluar aman...")
     end
 
-    -- 3) KELUAR + 4) PULANG
-    local homePos = HomeCFrame.Position
-    local dir = homePos - part.Position
-    dir = Vector3.new(dir.X, 0, dir.Z)
-    if dir.Magnitude < 1 then dir = Vector3.new(0, 0, 1) end
-    smartMove(part.Position + dir.Unit * Config.ExitDistance + Vector3.new(0, 2, 0))
-    smartMove(homePos + Vector3.new(0, 2, 0))
-    log("STEAL", "✅ Sampai base — siklus selesai")
+    -- 3) Keluar & Pulang (Anti-Anomali)
+    local homePos    = HomeCFrame.Position
+    local curHRP     = getHRP()
+    local startPos   = curHRP and curHRP.Position or (part.Position + Vector3.new(0, 2, 0))
+    local dir        = homePos - startPos
+    local horizDir   = Vector3.new(dir.X, 0, dir.Z)
+    if horizDir.Magnitude < 1 then horizDir = Vector3.new(0, 0, 1) end
+    horizDir = horizDir.Unit
+
+    if Config.SkyExit then
+        local exitH = Config.ExitHeight or 30
+        log("STEAL", string.format("🚀 Keluar jalur atas (+%d studs, bypass tembok)...", exitH))
+
+        -- Naik vertikal di atas tembok
+        smartMove(startPos + Vector3.new(0, exitH, 0))
+
+        -- Meluncur di udara melewati batas base lawan
+        local highPos = (getHRP() and getHRP().Position) or (startPos + Vector3.new(0, exitH, 0))
+        smartMove(highPos + horizDir * Config.ExitDistance)
+
+        -- Meluncur di udara menuju atas base sendiri
+        log("STEAL", "✈️ Menuju base via udara...")
+        local overHome = Vector3.new(homePos.X, highPos.Y, homePos.Z)
+        smartMove(overHome)
+
+        -- Turun mulus ke base sendiri
+        smartMove(homePos + Vector3.new(0, 2, 0))
+    else
+        log("STEAL", "🏃 Keluar jalur lurus...")
+        smartMove(startPos + horizDir * Config.ExitDistance + Vector3.new(0, 2, 0))
+        smartMove(homePos + Vector3.new(0, 2, 0))
+    end
+
+    log("STEAL", "✅ Sampai base — barang aman & siklus selesai!")
 
     for p, v in pairs(originalCollide) do
-        if p and p.Parent then
-            p.CanCollide = v
-        end
+        if p and p.Parent then p.CanCollide = v end
+    end
+    for p, v in pairs(originalTouch) do
+        if p and p.Parent then p.CanTouch = v end
     end
 
     stealing = false
@@ -595,16 +701,14 @@ end
 
 task.spawn(function()
     while true do
-        task.wait(Config.DelayPerCycle)
+        jwait(Config.DelayPerCycle)
         if State.AutoStealTP then
             pcall(doStealCycle)
         end
     end
 end)
 
---==================================================
--- INSTANT STEAL
---==================================================
+-- Instant Steal
 local function applyInstant(prompt)
     if prompt:IsA("ProximityPrompt") and matches(promptText(prompt), Config.StealKeywords) then
         prompt.HoldDuration = 0
@@ -617,9 +721,7 @@ ProximityPromptService.PromptShown:Connect(function(prompt)
     end
 end)
 
---==================================================
--- AUTO STEAL (tanpa TP) + AUTO COLLECT
---==================================================
+-- Auto Steal & Collect
 task.spawn(function()
     while true do
         task.wait(Config.ScanDelay)
@@ -657,9 +759,7 @@ task.spawn(function()
     end
 end)
 
---==================================================
--- WALKSPEED / INFINITE JUMP / NOCLIP / ANTI KNOCKBACK
---==================================================
+-- Player Movement & Physics
 RunService.Heartbeat:Connect(function()
     if State.WalkSpeed then
         local hum = getHumanoid()
@@ -719,9 +819,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
---==================================================
--- DEBUG PROMPTS
---==================================================
+-- Debug Prompts
 local function debugPrompts()
     log("DEBUG", "===== DAFTAR PROMPT =====")
     local n = 0
@@ -735,9 +833,7 @@ local function debugPrompts()
     log("DEBUG", "Total: " .. n .. " prompt")
 end
 
---==================================================
--- GUI v7 — modern & ringan (tab dibuat lazy, tanpa banyak instance)
---==================================================
+-- GUI Setup
 local guiParent
 do
     local ok, hui = pcall(function() return gethui() end)
@@ -764,18 +860,18 @@ local function destroyOldGui(name)
         end
     end
 end
-for _, name in ipairs({"BTDL_v7", "BTDL_v6", "BTDL_v5", "BTDL_v4", "BTDL_v3", "BTDL_AllInOne", "StealTools"}) do
+for _, name in ipairs({"BTDL_v8", "BTDL_v7", "BTDL_v6", "BTDL_v5", "BTDL_v4", "BTDL_v3", "BTDL_AllInOne", "StealTools"}) do
     destroyOldGui(name)
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "BTDL_v7"
+gui.Name = "BTDL_v8"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = guiParent
 
 State.FallbackAny = Config.FallbackAnyPrompt
-State.AntiAFK = true
+State.AntiAFK     = true
 
 local espFolder = Instance.new("Folder")
 espFolder.Name = "BTDL_ESP"
@@ -785,7 +881,7 @@ do
     local isMobile = UserInputService.TouchEnabled
     local viewport = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 400)
     local W   = isMobile and math.clamp(viewport.X * 0.55, 300, 380) or 360
-    local H   = isMobile and math.clamp(viewport.Y * 0.78, 210, 280) or 330
+    local H   = isMobile and math.clamp(viewport.Y * 0.78, 220, 290) or 340
     local ROW = isMobile and 34 or 30
 
     local C = {
@@ -812,7 +908,6 @@ do
         c.Parent = o
     end
 
-    -- drag (mouse + touch)
     local function makeDraggable(handle, target, onTap)
         local dragging, startPos, startInput, moved = false, nil, nil, false
         handle.InputBegan:Connect(function(input)
@@ -838,9 +933,7 @@ do
         end)
     end
 
-    ----------------------------------------------------------
-    -- WINDOW
-    ----------------------------------------------------------
+    -- Window
     local main = mk("Frame", {
         Name = "Main", Size = UDim2.new(0, W, 0, H),
         Position = UDim2.new(0.5, -W / 2, 0.08, 0),
@@ -851,7 +944,7 @@ do
     local topbar = mk("Frame", {Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = C.bar, BorderSizePixel = 0}, main)
     mk("TextLabel", {
         Size = UDim2.new(1, -70, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1,
-        Text = "⚔️ BTD Loot  v7", TextColor3 = C.text, Font = Enum.Font.GothamBold, TextSize = 13,
+        Text = "⚔️ BTD Loot v8 (Anti-Anomali)", TextColor3 = C.text, Font = Enum.Font.GothamBold, TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, topbar)
 
@@ -876,9 +969,7 @@ do
     corner(hideBtn, 5)
     hideBtn.MouseButton1Click:Connect(function() main.Visible = false end)
 
-    ----------------------------------------------------------
-    -- TABS (lazy build)
-    ----------------------------------------------------------
+    -- Tabs
     local TAB_NAMES = {"Steal", "Filter", "Player", "Misc", "Log"}
     local tabbar = mk("Frame", {Size = UDim2.new(1, -12, 0, 26), Position = UDim2.new(0, 6, 0, 4), BackgroundTransparency = 1}, body)
     do
@@ -890,7 +981,7 @@ do
     local holder = mk("Frame", {Size = UDim2.new(1, 0, 1, -34), Position = UDim2.new(0, 0, 0, 34), BackgroundTransparency = 1}, body)
 
     local pages, tabBtns, builders, built = {}, {}, {}, {}
-    local cur -- page yang sedang dibangun
+    local cur
 
     local function selectTab(name)
         for n, pg in pairs(pages) do
@@ -932,9 +1023,7 @@ do
         tabBtns[name] = tb
     end
 
-    ----------------------------------------------------------
-    -- KOMPONEN
-    ----------------------------------------------------------
+    -- UI Components
     local function section(text)
         mk("TextLabel", {
             Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, Text = text, TextColor3 = C.accent,
@@ -998,9 +1087,7 @@ do
         end)
     end
 
-    ----------------------------------------------------------
-    -- TAB: STEAL
-    ----------------------------------------------------------
+    -- Tab: Steal
     builders["Steal"] = function()
         toggle("★ Auto Steal TP", "AutoStealTP", function(on)
             if on and not HomeCFrame then
@@ -1031,6 +1118,13 @@ do
         end)
         button("▶ Steal TP Sekali", nil, function() task.spawn(doStealCycle) end)
 
+        section("ANTI ANOMALI & EXIT")
+        toggle("Keluar Jalur Atas (Sky Exit)", "SkyExit", function(on) Config.SkyExit = on end)
+        numbox("Tinggi Jalur Atas", "ExitHeight", 15, 80)
+        toggle("Anti-Touch Tembok", "AntiTouch", function(on) Config.AntiTouch = on end)
+        toggle("Mode Manusia (Normal Speed)", "HumanMode", function(on) Config.HumanMode = on end)
+        numbox("Kecepatan Normal", "NormalMoveSpeed", 16, 200)
+
         section("PENGATURAN")
         numbox("Radius Base", "HomeRadius", 10, 300)
         numbox("Jarak Maks Target", "MaxTargetDistance", 20, 1000)
@@ -1052,9 +1146,7 @@ do
         numbox("Range Auto Collect", "AutoCollectRange", 5, 100)
     end
 
-    ----------------------------------------------------------
-    -- TAB: FILTER
-    ----------------------------------------------------------
+    -- Tab: Filter
     builders["Filter"] = function()
         section("RARITY (kosong = semua)")
         for _, r in ipairs(Config.Rarities) do
@@ -1084,9 +1176,7 @@ do
         toggle("Skip Prompt Hack", "SkipHack")
     end
 
-    ----------------------------------------------------------
-    -- TAB: PLAYER
-    ----------------------------------------------------------
+    -- Tab: Player
     builders["Player"] = function()
         toggle("WalkSpeed", "WalkSpeed", function(on)
             if not on then
@@ -1103,18 +1193,16 @@ do
         toggle("Anti AFK", "AntiAFK")
     end
 
-    ----------------------------------------------------------
-    -- TAB: MISC
-    ----------------------------------------------------------
+    -- Tab: Misc
     builders["Misc"] = function()
         toggle("ESP Loot", "ESP")
-        local Lighting = game:GetService("Lighting")
-        local oldLight = {Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd}
+        local LightingServ = game:GetService("Lighting")
+        local oldLight = {Brightness = LightingServ.Brightness, ClockTime = LightingServ.ClockTime, FogEnd = LightingServ.FogEnd}
         toggle("Fullbright", "Fullbright", function(on)
             if on then
-                Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = 2, 14, 1e5
+                LightingServ.Brightness, LightingServ.ClockTime, LightingServ.FogEnd = 2, 14, 1e5
             else
-                Lighting.Brightness, Lighting.ClockTime, Lighting.FogEnd = oldLight.Brightness, oldLight.ClockTime, oldLight.FogEnd
+                LightingServ.Brightness, LightingServ.ClockTime, LightingServ.FogEnd = oldLight.Brightness, oldLight.ClockTime, oldLight.FogEnd
             end
         end)
         button("🎯 TP ke Target Terdekat", nil, function()
@@ -1127,12 +1215,17 @@ do
             end
         end)
         button("🔍 Debug Prompts", nil, debugPrompts)
+        button("🔭 Unlock Zoom Limit", nil, function(btn)
+            LocalPlayer.CameraMaxZoomDistance = 100000
+            log("MISC", "Zoom limit dibuka ✅")
+            btn.Text = "✅ Zoom Unlocked"
+        end)
         button("💀 Reset Karakter", Color3.fromRGB(150, 60, 60), function()
             local h = getHumanoid()
             if h then h.Health = 0 end
         end)
         button("🔄 Rejoin Server", Color3.fromRGB(100, 70, 150), function()
-            pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer) end)
+            pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
         end)
         button("❌ Unload Script", C.danger, function()
             for k in pairs(State) do State[k] = false end
@@ -1141,9 +1234,7 @@ do
         end)
     end
 
-    ----------------------------------------------------------
-    -- TAB: LOG
-    ----------------------------------------------------------
+    -- Tab: Log
     local LOG_FILE = "BTD_Loot_log.txt"
     local function saveLogFile()
         if writefile then
@@ -1152,18 +1243,12 @@ do
         end
         return false
     end
-    task.spawn(function()
-        while true do
-            task.wait(15)
-            if #LogBuffer > 0 then saveLogFile() end
-        end
-    end)
 
     local webhookUrl = ""
     local function sendWebhook()
         local req = (syn and syn.request) or (http and http.request) or http_request or request
         if webhookUrl == "" or not req then
-            log("LOG", "⚠️ Isi URL webhook dulu / executor tidak support request")
+            log("LOG", "⚠️ Isi URL webhook / executor tidak support HTTP")
             return
         end
         local text = "```\n" .. string.sub(table.concat(LogBuffer, "\n"), -1800) .. "\n```"
@@ -1171,7 +1256,7 @@ do
             req({
                 Url = webhookUrl, Method = "POST",
                 Headers = {["Content-Type"] = "application/json"},
-                Body = game:GetService("HttpService"):JSONEncode({content = text}),
+                Body = HttpService:JSONEncode({content = text}),
             })
         end)
         log("LOG", ok and "Log terkirim ✅" or ("Gagal kirim: " .. tostring(err)))
@@ -1203,7 +1288,7 @@ do
         button("💾 Simpan ke File", Color3.fromRGB(45, 120, 95), function()
             log("LOG", saveLogFile() and ("Tersimpan: workspace/" .. LOG_FILE) or "⚠️ writefile tidak didukung")
         end)
-        button("🗑 Clear", Color3.fromRGB(130, 55, 55), function()
+        button("🗑 Clear Log", Color3.fromRGB(130, 55, 55), function()
             LogBuffer = {}
             refreshLog()
         end)
@@ -1222,9 +1307,6 @@ do
 
     selectTab("Steal")
 
-    ----------------------------------------------------------
-    -- TOMBOL MELAYANG + TOGGLE KEY
-    ----------------------------------------------------------
     local bubble = mk("TextButton", {
         Size = UDim2.new(0, 44, 0, 44), Position = UDim2.new(0, 12, 0.4, 0), BackgroundColor3 = C.bar,
         Text = "⚔️", TextSize = 20, Font = Enum.Font.GothamBold, TextColor3 = C.accent, BorderSizePixel = 0, Active = true,
@@ -1240,11 +1322,7 @@ do
     end)
 end
 
---==================================================
--- FITUR PENDUKUNG (loop ringan)
---==================================================
-
--- ESP: update tiap 3 dtk, maksimal 40 label
+-- ESP Loop
 task.spawn(function()
     while true do
         task.wait(3)
@@ -1279,6 +1357,7 @@ task.spawn(function()
     end
 end)
 
+-- Anti-AFK
 LocalPlayer.Idled:Connect(function()
     if State.AntiAFK then
         pcall(function()
@@ -1289,6 +1368,7 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
+-- Fly
 RunService.Heartbeat:Connect(function()
     if State.Fly then
         local hrp, hum = getHRP(), getHumanoid()
@@ -1301,6 +1381,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- Respawn Base
 LocalPlayer.CharacterAdded:Connect(function(char)
     if State.AutoRespawnBase and HomeCFrame then
         task.wait(1)
@@ -1308,23 +1389,8 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- tangkap error Roblox ke log (dibatasi 1 baris/detik)
-local lastGameLog = 0
-pcall(function()
-    game:GetService("LogService").MessageOut:Connect(function(msg, mtype)
-        if mtype == Enum.MessageType.MessageError or mtype == Enum.MessageType.MessageWarning then
-            local now = tick()
-            if now - lastGameLog < 1 then return end
-            lastGameLog = now
-            log(mtype == Enum.MessageType.MessageError and "ERR" or "WARN", string.sub(msg, 1, 160))
-        end
-    end)
-end)
-
---==================================================
--- START
---==================================================
-log("SYS", "Script v7 loaded ✅ " .. (UserInputService.TouchEnabled and "(MOBILE 📱)" or "(PC 🖥️)"))
+-- Init
+log("SYS", "Script siap ✅ " .. (UserInputService.TouchEnabled and "(MOBILE 📱)" or "(PC 🖥️)"))
 task.spawn(function()
     task.wait(1.5)
     initBypass()

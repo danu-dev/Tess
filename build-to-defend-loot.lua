@@ -952,82 +952,6 @@ local function makeButton(labelText, color, callback)
     return btn
 end
 
-newTab("🎯 Steal")
-makeButton("📍 Set Base (berdiri di base!)", Color3.fromRGB(200, 120, 40), function(btn)
-    local hrp = getHRP()
-    if hrp then
-        HomeCFrame = hrp.CFrame
-        log("BASE", "📍 Base tersimpan")
-        btn.Text = "✅ Base tersimpan!"
-        task.wait(1)
-        btn.Text = "📍 Set Base (berdiri di base!)"
-    end
-end)
-
-makeToggle("★ Auto Steal TP", "AutoStealTP", function(on)
-    if on and not HomeCFrame then
-        local hrp = getHRP()
-        if hrp then
-            HomeCFrame = hrp.CFrame
-            log("BASE", "📍 Base otomatis di-set")
-        end
-    end
-end)
-
-makeButton("▶ Steal TP Sekali", Color3.fromRGB(60, 90, 160), function()
-    task.spawn(doStealCycle)
-end)
-
-local filterBox = Instance.new("TextBox")
-styleButton(filterBox)
-filterBox.PlaceholderText = "Filter loot: golden, secret..."
-filterBox.Text = ""
-filterBox.Parent = btnScroll
-filterBox.FocusLost:Connect(function()
-    Config.RarityFilter = {}
-    for word in string.gmatch(string.lower(filterBox.Text), "[^,%s]+") do
-        table.insert(Config.RarityFilter, word)
-    end
-    log("GUI", "🎯 Filter: " .. (#Config.RarityFilter > 0 and table.concat(Config.RarityFilter, ", ") or "SEMUA loot"))
-end)
-
-makeToggle("Skip Prompt Hack", "SkipHack")
-makeToggle("Auto Steal (tanpa TP)", "AutoSteal")
-
-makeToggle("Instant Steal", "InstantSteal", function(on)
-    if on then
-        for _, o in ipairs(Workspace:GetDescendants()) do
-            pcall(applyInstant, o)
-        end
-    end
-end)
-
-newTab("🏃 Player")
-makeToggle("WalkSpeed", "WalkSpeed", function(on)
-    if not on then
-        local hum = getHumanoid()
-        if hum then hum.WalkSpeed = 16 end
-    end
-end)
-
-local speedBox = Instance.new("TextBox")
-styleButton(speedBox)
-speedBox.Text = tostring(Config.WalkSpeedValue)
-speedBox.PlaceholderText = "WalkSpeed (16-500)"
-speedBox.Parent = btnScroll
-speedBox.FocusLost:Connect(function()
-    local n = tonumber(speedBox.Text)
-    if n then
-        Config.WalkSpeedValue = math.clamp(math.floor(n), 16, 500)
-    end
-    speedBox.Text = tostring(Config.WalkSpeedValue)
-end)
-
-makeToggle("Infinite Jump", "InfiniteJump")
-makeToggle("NoClip", "NoClip")
-makeToggle("Auto Collect", "AutoCollect")
-makeToggle("Anti Knockback", "AntiKnockback")
-
 --=== OPSI TAMBAHAN ===--
 local function makeSection(text)
     local l = Instance.new("TextLabel")
@@ -1057,21 +981,18 @@ local function makeNumberBox(labelText, cfgKey, minV, maxV)
     end)
 end
 
-newTab("⚙️ Config")
-makeSection("PENGATURAN STEAL")
+newTab("📍 Base")
+makeButton("📍 Set Base (berdiri di base!)", Color3.fromRGB(200, 120, 40), function(btn)
+    local hrp = getHRP()
+    if hrp then
+        HomeCFrame = hrp.CFrame
+        log("BASE", "📍 Base tersimpan")
+        btn.Text = "✅ Base tersimpan!"
+        task.wait(1)
+        btn.Text = "📍 Set Base (berdiri di base!)"
+    end
+end)
 
-makeNumberBox("Jumlah Retry", "StealRetries", 1, 10)
-makeNumberBox("Radius Base", "HomeRadius", 10, 300)
-makeNumberBox("Kecepatan TP", "MoveStep", 4, 60)
-makeNumberBox("Jeda Siklus (detik)", "DelayPerCycle", 0.1, 10)
-makeNumberBox("Blacklist (detik)", "BlacklistTime", 5, 120)
-makeNumberBox("Range Auto Steal", "AutoStealRange", 5, 100)
-makeNumberBox("Range Auto Collect", "AutoCollectRange", 5, 100)
-State.FallbackAny = Config.FallbackAnyPrompt
-makeToggle("Fallback Semua Prompt", "FallbackAny", function(on) Config.FallbackAnyPrompt = on end)
-
-newTab("📍 Teleport")
-makeSection("TELEPORT")
 makeButton("🏠 Pulang ke Base", Color3.fromRGB(200, 120, 40), function()
     if HomeCFrame then
         local c = getChar()
@@ -1081,6 +1002,95 @@ makeButton("🏠 Pulang ke Base", Color3.fromRGB(200, 120, 40), function()
         log("TP", "⚠️ Base belum di-set")
     end
 end)
+makeNumberBox("Radius Base", "HomeRadius", 10, 300)
+
+newTab("★ Auto Steal TP")
+makeToggle("★ Auto Steal TP", "AutoStealTP", function(on)
+    if on and not HomeCFrame then
+        local hrp = getHRP()
+        if hrp then
+            HomeCFrame = hrp.CFrame
+            log("BASE", "📍 Base otomatis di-set")
+        end
+    end
+end)
+
+makeButton("▶ Steal TP Sekali", Color3.fromRGB(60, 90, 160), function()
+    task.spawn(doStealCycle)
+end)
+makeNumberBox("Jumlah Retry", "StealRetries", 1, 10)
+makeNumberBox("Kecepatan TP", "MoveStep", 4, 60)
+makeNumberBox("Jeda Siklus (detik)", "DelayPerCycle", 0.1, 10)
+makeNumberBox("Blacklist (detik)", "BlacklistTime", 5, 120)
+State.FallbackAny = Config.FallbackAnyPrompt
+makeToggle("Fallback Semua Prompt", "FallbackAny", function(on) Config.FallbackAnyPrompt = on end)
+
+newTab("🔎 Filter Loot")
+
+local filterBox = Instance.new("TextBox")
+styleButton(filterBox)
+filterBox.PlaceholderText = "Filter loot: golden, secret..."
+filterBox.Text = ""
+filterBox.Parent = btnScroll
+filterBox.FocusLost:Connect(function()
+    Config.RarityFilter = {}
+    for word in string.gmatch(string.lower(filterBox.Text), "[^,%s]+") do
+        table.insert(Config.RarityFilter, word)
+    end
+    log("GUI", "🎯 Filter: " .. (#Config.RarityFilter > 0 and table.concat(Config.RarityFilter, ", ") or "SEMUA loot"))
+end)
+
+makeToggle("Skip Prompt Hack", "SkipHack")
+
+newTab("🤏 Auto Steal")
+makeToggle("Auto Steal (tanpa TP)", "AutoSteal")
+makeNumberBox("Range Auto Steal", "AutoStealRange", 5, 100)
+
+newTab("⚡ Instant Steal")
+
+makeToggle("Instant Steal", "InstantSteal", function(on)
+    if on then
+        for _, o in ipairs(Workspace:GetDescendants()) do
+            pcall(applyInstant, o)
+        end
+    end
+end)
+
+newTab("🏃 WalkSpeed")
+makeToggle("WalkSpeed", "WalkSpeed", function(on)
+    if not on then
+        local hum = getHumanoid()
+        if hum then hum.WalkSpeed = 16 end
+    end
+end)
+
+local speedBox = Instance.new("TextBox")
+styleButton(speedBox)
+speedBox.Text = tostring(Config.WalkSpeedValue)
+speedBox.PlaceholderText = "WalkSpeed (16-500)"
+speedBox.Parent = btnScroll
+speedBox.FocusLost:Connect(function()
+    local n = tonumber(speedBox.Text)
+    if n then
+        Config.WalkSpeedValue = math.clamp(math.floor(n), 16, 500)
+    end
+    speedBox.Text = tostring(Config.WalkSpeedValue)
+end)
+
+newTab("🦘 Inf Jump")
+makeToggle("Infinite Jump", "InfiniteJump")
+
+newTab("👻 NoClip")
+makeToggle("NoClip", "NoClip")
+
+newTab("💰 Collect")
+makeToggle("Auto Collect", "AutoCollect")
+makeNumberBox("Range Auto Collect", "AutoCollectRange", 5, 100)
+
+newTab("🛡 Anti KB")
+makeToggle("Anti Knockback", "AntiKnockback")
+
+newTab("🎯 TP Target")
 makeButton("🎯 TP ke Target Terdekat", Color3.fromRGB(60, 90, 160), function()
     local _, part = findStealTarget()
     local c = getChar()
@@ -1096,8 +1106,7 @@ makeButton("💀 Reset Karakter", Color3.fromRGB(120, 50, 50), function()
     if h then h.Health = 0 end
 end)
 
-newTab("👁 Visual")
-makeSection("VISUAL")
+newTab("👁 ESP Loot")
 local espFolder = Instance.new("Folder")
 espFolder.Name = "BTDL_ESP"
 espFolder.Parent = gui
@@ -1136,6 +1145,8 @@ task.spawn(function()
 end)
 makeToggle("ESP Loot", "ESP")
 
+newTab("💡 Fullbright")
+
 local Lighting = game:GetService("Lighting")
 local oldLight = {Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd}
 makeToggle("Fullbright", "Fullbright", function(on)
@@ -1146,8 +1157,7 @@ makeToggle("Fullbright", "Fullbright", function(on)
     end
 end)
 
-newTab("🧰 Misc")
-makeSection("LAINNYA")
+newTab("😴 Anti AFK")
 LocalPlayer.Idled:Connect(function()
     if State.AntiAFK then
         pcall(function()
@@ -1160,6 +1170,7 @@ end)
 State.AntiAFK = true
 makeToggle("Anti AFK", "AntiAFK")
 
+newTab("🕊 Fly")
 makeToggle("Fly (Mobile/PC)", "Fly")
 RunService.Heartbeat:Connect(function()
     if State.Fly then
@@ -1175,6 +1186,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+newTab("🔁 Auto Base")
 makeToggle("Auto Reset Kalau Mati", "AutoRespawnBase")
 LocalPlayer.CharacterAdded:Connect(function(char)
     if State.AutoRespawnBase and HomeCFrame then
@@ -1183,6 +1195,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
+newTab("🌐 Server")
 makeButton("🔄 Rejoin Server", Color3.fromRGB(90, 60, 130), function()
     local TS = game:GetService("TeleportService")
     pcall(function() TS:Teleport(game.PlaceId, LocalPlayer) end)
@@ -1193,10 +1206,11 @@ makeButton("❌ Tutup Script (Unload)", Color3.fromRGB(120, 50, 50), function()
     gui:Destroy()
 end)
 
+newTab("🔍 Debug")
 makeButton("🔍 Debug Prompts", Color3.fromRGB(90, 60, 130), debugPrompts)
 
 buildLogTab()
-selectTab("🎯 Steal")
+selectTab("📍 Base")
 
 -- pastikan menu terbuka (tidak minimize) saat pertama jalan
 minimized = false
@@ -1248,7 +1262,6 @@ local function sendWebhook()
 end
 
 newTab("📤 Kirim Log")
-makeSection("KIRIM / SIMPAN LOG")
 makeButton("📋 Copy Semua Log", Color3.fromRGB(60, 90, 160), function()
     if setclipboard then
         setclipboard(table.concat(LogBuffer, "\n"))
@@ -1271,7 +1284,7 @@ makeButton("📨 Kirim Log ke Webhook", Color3.fromRGB(88, 101, 242), function()
     webhookUrl = whBox.Text
     sendWebhook()
 end)
-selectTab("🎯 Steal")
+selectTab("📍 Base")
 
 --=== TOMBOL ⚔️ MELAYANG ===--
 local bubble = Instance.new("TextButton")

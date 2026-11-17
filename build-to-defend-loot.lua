@@ -467,18 +467,23 @@ local function doStealCycle()
     -- 2) STEAL + VERIFIKASI
     local before = backpackItems()
     local sukses = false
-    for i = 1, Config.StealRetries do
-        -- pastikan tetap menempel di target tiap percobaan
+
+    -- kunci posisi tiap frame (anti jatuh karena CanCollide off / konveyor bergerak)
+    local lockConn = RunService.Heartbeat:Connect(function()
         local h = getHRP()
-        if h then
+        if h and part and part.Parent then
+            h.CFrame = CFrame.new(part.Position + Vector3.new(0, 2.5, 0))
             h.AssemblyLinearVelocity = Vector3.zero
-            pcall(function() char:PivotTo(CFrame.new(part.Position + Vector3.new(0, 2.5, 0))) end)
         end
+    end)
+    task.wait(0.4) -- beri waktu server menerima posisi baru
+
+    for i = 1, Config.StealRetries do
         for _ = 1, 3 do
             firePrompt(prompt)
             task.wait(0.1)
         end
-        task.wait(0.35)
+        task.wait(0.5)
 
         if not (prompt and prompt.Parent and prompt.Enabled) then
             sukses = true
@@ -496,6 +501,7 @@ local function doStealCycle()
         log("STEAL", "🔁 Retry " .. i .. "/" .. Config.StealRetries)
     end
 
+    lockConn:Disconnect()
     if not sukses then
         blacklist[prompt] = tick()
         log("STEAL", "❌ Server tolak steal -> skip 20s, pindah target lain")

@@ -31,7 +31,7 @@ local RARITY_ALIAS = {
 }
 
 -- STATE
-local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true }
+local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = true, noclip = true }
 local Vals = { speed = 100, wait = 0.35 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
 local hooks = {}
@@ -415,6 +415,8 @@ local settingBody = addTab("Setting", 3)
 local debugBody   = addTab("Debug", 4)
 
 addToggle(stealBody, "Auto Steal", "autosteal")
+addToggle(stealBody, "Instant Steal", "instantsteal")
+addToggle(stealBody, "Noclip Pulang (Tembus Tembok)", "noclip")
 addToggle(stealBody, "Reset Karakter dulu", "resetfirst")
 addToggle(stealBody, "No Scan My Base", "nobase")
 addToggle(stealBody, "Hanya Base Musuh", "enemyonly")
@@ -932,18 +934,19 @@ local function firePrompt(p, fallbackPos, tk)
     end
 
     ensureNear()
-    if not wasEnabled then task.wait(0.2) end
+    if not wasEnabled then task.wait(0.15) end
 
-    if origHold <= 0.1 and fireproximityprompt then
+    if (Flags.instantsteal or origHold <= 0.1) and fireproximityprompt then
+        if Flags.instantsteal then pcall(function() p.HoldDuration = 0 end) end
         for _ = 1, 3 do
             if done() or not ensureNear() then break end
             pcall(fireproximityprompt, p)
-            task.wait(0.15)
+            task.wait(0.1)
         end
     end
 
-    -- Gunakan hold asli agar server tidak menolak prompt dengan HoldDuration > 0
     if not done() and ensureNear() then
+        pcall(function() p.HoldDuration = origHold end)
         pcall(function() p:InputHoldBegin() end)
         local holdWait = math.max(origHold, 0.1) + 0.35
         local t0 = os.clock()
@@ -962,6 +965,7 @@ local function firePrompt(p, fallbackPos, tk)
     if trigConn then pcall(function() trigConn:Disconnect() end) end
     pcall(function()
         if p.Parent then
+            p.HoldDuration = origHold
             p.MaxActivationDistance = origDist
             p.RequiresLineOfSight = origLos
         end
@@ -1002,30 +1006,60 @@ local function wallAhead(origin, dir, dist)
     return false
 end
 
--- Jalan normal ke home memakai Humanoid:MoveTo agar tidak rubberband
+local noclipActive = false
+track(RunService.Stepped:Connect(function()
+    if not noclipActive then return end
+    local c = LP.Character
+    if not c then return end
+    for _, d in ipairs(c:GetDescendants()) do
+        if d:IsA("BasePart") and d.CanCollide then
+            d.CanCollide = false
+        end
+    end
+end))
+
+local function setNoclip(on)
+    noclipActive = on
+    if not on then
+        local c = LP.Character
+        if c then
+            for _, name in ipairs({ "HumanoidRootPart", "Torso", "UpperTorso", "LowerTorso", "Head" }) do
+                local p = c:FindFirstChild(name)
+                if p and p:IsA("BasePart") then p.CanCollide = true end
+            end
+        end
+    end
+end
+
+-- Jalan normal ke home memakai Humanoid:MoveTo + Noclip agar tembus tembok tanpa rubberband
 local function walkHome(dest, tk)
+    if Flags.noclip then setNoclip(true) end
     local t0 = os.clock()
     local lastPos = root() and root().Position
     local lastMove = os.clock()
     local sideDir = 1
+    local reached = false
     while Flags.autosteal and tk == token and os.clock() - t0 < 45 do
         local hrp = root()
         local h = hum()
-        if not hrp or not h then return false end
+        if not hrp or not h then break end
         local pos = hrp.Position
         local flat = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
-        if flat.Magnitude < 6 then return true end
+        if flat.Magnitude < 6 then
+            reached = true
+            break
+        end
 
         h:MoveTo(dest)
         local dir = flat.Unit
-        if wallAhead(pos, dir, 4.5) then
+        if not Flags.noclip and wallAhead(pos, dir, 4.5) then
             h.Jump = true
         end
 
         if lastPos and (pos - lastPos).Magnitude > 1 then
             lastPos = pos
             lastMove = os.clock()
-        elseif os.clock() - lastMove > 0.9 then
+        elseif os.clock() - lastMove > 1.2 then
             h.Jump = true
             local perp = Vector3.new(-dir.Z, 0, dir.X) * sideDir * 8
             sideDir = -sideDir
@@ -1036,7 +1070,8 @@ local function walkHome(dest, tk)
         end
         task.wait(0.25)
     end
-    return false
+    setNoclip(false)
+    return reached
 end
 
 local function cycle(tk)

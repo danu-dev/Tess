@@ -31,7 +31,7 @@ local RARITY_ALIAS = {
 }
 
 -- STATE
-local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = true, noclip = false }
+local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = false, noclip = false }
 local Vals = { speed = 100, wait = 0.35 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
 local hooks = {}
@@ -1038,39 +1038,42 @@ local function walkHome(dest, tk)
     local lastPos = root() and root().Position
     local lastMove = os.clock()
     local sideDir = 1
-    local reached = false
+    local reason = "timeout"
     local h0 = hum()
     local origJP = h0 and h0.JumpPower or 50
     while Flags.autosteal and tk == token and os.clock() - t0 < 45 do
         local hrp = root()
         local h = hum()
-        if not hrp or not h then break end
+        if not hrp or not h or h.Health <= 0 then
+            reason = "mati/hilang"
+            break
+        end
         local pos = hrp.Position
         local flat = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
         if flat.Magnitude < 6 then
-            reached = true
+            reason = "sampai"
             break
         end
 
         h:MoveTo(dest)
         local dir = flat.Unit
-        if not Flags.noclip and wallAhead(pos, dir, 5) then
+        if not Flags.noclip and (wallAhead(pos, dir, 6) or wallAhead(pos + Vector3.new(0, 3, 0), dir, 6)) then
             h.UseJumpPower = true
-            h.JumpPower = 85
+            h.JumpPower = 130
             h.Jump = true
         end
 
         if lastPos and (pos - lastPos).Magnitude > 1 then
             lastPos = pos
             lastMove = os.clock()
-        elseif os.clock() - lastMove > 1.0 then
+        elseif os.clock() - lastMove > 0.9 then
             h.UseJumpPower = true
-            h.JumpPower = 85
+            h.JumpPower = 130
             h.Jump = true
             local perp = Vector3.new(-dir.Z, 0, dir.X) * sideDir * 8
             sideDir = -sideDir
             h:MoveTo(pos + perp + dir * 4)
-            task.wait(0.4)
+            task.wait(0.35)
             lastPos = root() and root().Position
             lastMove = os.clock()
         end
@@ -1079,7 +1082,8 @@ local function walkHome(dest, tk)
     local hEnd = hum()
     if hEnd then hEnd.JumpPower = origJP end
     setNoclip(false)
-    return reached
+    addLog("walkHome selesai: " .. reason)
+    return reason == "sampai"
 end
 
 local function cycle(tk)

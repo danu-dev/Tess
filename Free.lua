@@ -1,13 +1,6 @@
 --[[
-    SENAR HUB  |  Build to Defense Loot
-    Dev : GGSIHLUH
-    Fix : DanuDev  (deteksi base sendiri vs base musuh)
-
-    Auto Steal : reset karakter -> TP ke loot (sesuai Rarity) -> curi -> gerak paksa ke home
-                 (ada tembok: naik lalu turun lagi, speed 100 / 50 berganti)
-    Speed Force, Rarity Loot (All/Common/.../Secret), No Scan My Base
-    Hanya Base Musuh : loot di base sendiri tidak akan diambil
-    UI oren: tombol + membuka kotak dari atas ke bawah, kategori = dropdown
+    SENAR HUB | Build to Defense Loot
+    Dev : GGSIHLUH | Fix : DanuDev
 ]]
 
 local Players = game:GetService("Players")
@@ -19,13 +12,17 @@ local VirtualUser = game:GetService("VirtualUser")
 local LP = Players.LocalPlayer
 if not LP then return end
 
--- ================= CONFIG =================
+-- CONFIG
 local GAME_NAME = "Build to Defense Loot"
-local ICON_ID   = 75030918293811   -- icon Senar oren terbaru
-local BG_ID     = 75030918293811   -- background Senar Hub oren (ganti kalau beda)
+local ICON_ID   = 75030918293811
+local BG_ID     = 75030918293811
 
 local STEAL_WORDS = { "steal", "take", "grab", "pick", "pickup", "collect", "claim", "loot", "rob", "carry", "hold", "interact", "equip", "snatch", "curi", "ambil", "colong", "bawa", "angkat" }
-local IGNORE_WORDS = { "lock", "unlock", "upgrade", "buy", "purchase", "sell", "shop", "open", "close", "spawn", "kunci", "beli", "jual" }
+local IGNORE_WORDS = {
+    "lock", "unlock", "upgrade", "buy", "purchase", "sell", "shop", "open", "close", "spawn",
+    "kunci", "beli", "jual", "thumbs", "like", "sign", "change", "friend", "allow", "toggle",
+    "merge", "machine", "expansion", "hack", "door", "pickup all", "conveyor", "haunted",
+}
 local RARITIES = { "common", "uncommon", "rare", "epic", "legendary", "mythic", "secret" }
 local RARITY_ALIAS = {
     common = { "common", "umum" }, uncommon = { "uncommon", "tidak umum" }, rare = { "rare", "langka" },
@@ -33,7 +30,7 @@ local RARITY_ALIAS = {
     secret = { "secret", "rahasia" },
 }
 
--- ================= STATE =================
+-- STATE
 local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false }
 local Vals = { speed = 100, hi = 100, lo = 50, wait = 0.4, lift = 4 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
@@ -43,16 +40,16 @@ local widgets = {}
 local env = (getgenv and getgenv()) or _G
 if env.__SenarBTDL then pcall(env.__SenarBTDL) end
 
--- ================= HELPER UI =================
+-- UI HELPERS
 local C = {
-    BG   = Color3.fromRGB(12, 9, 7),
-    CARD = Color3.fromRGB(24, 17, 12),
+    BG    = Color3.fromRGB(12, 9, 7),
+    CARD  = Color3.fromRGB(24, 17, 12),
     CARD2 = Color3.fromRGB(38, 26, 16),
-    OR   = Color3.fromRGB(255, 122, 0),
-    OR2  = Color3.fromRGB(255, 176, 70),
-    DEEP = Color3.fromRGB(125, 54, 0),
-    TXT  = Color3.fromRGB(255, 255, 255),
-    SUB  = Color3.fromRGB(170, 152, 138),
+    OR    = Color3.fromRGB(255, 122, 0),
+    OR2   = Color3.fromRGB(255, 176, 70),
+    DEEP  = Color3.fromRGB(125, 54, 0),
+    TXT   = Color3.fromRGB(255, 255, 255),
+    SUB   = Color3.fromRGB(170, 152, 138),
 }
 
 local function new(class, props, parent)
@@ -106,7 +103,7 @@ env.__SenarBTDL = function()
     if gui and gui.Parent then gui:Destroy() end
 end
 
--- ================= WINDOW =================
+-- WINDOW
 local W, MIN_H, FULL_H = 340, 214, 452
 local cam0 = workspace.CurrentCamera
 local vp = cam0 and cam0.ViewportSize or Vector2.new(800, 400)
@@ -118,15 +115,13 @@ local Main = new("Frame", {
 }, gui)
 corner(Main, 18)
 local mainScale = new("UIScale", { Scale = baseScale }, Main)
-local mainStroke = stroke(Main, C.OR, 2)
+stroke(Main, C.OR, 2)
 
--- background (gambar) tipis
 new("ImageLabel", {
     Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = "rbxassetid://" .. BG_ID, ScaleType = Enum.ScaleType.Crop,
     ImageTransparency = 0.82, ZIndex = 0,
 }, Main)
 
--- header
 local header = new("Frame", { Size = UDim2.new(1, 0, 0, 72), BackgroundTransparency = 1, ZIndex = 2 }, Main)
 local logoBox = new("Frame", { Size = UDim2.fromOffset(48, 48), Position = UDim2.fromOffset(14, 12), BackgroundColor3 = C.CARD,
     BorderSizePixel = 0, ZIndex = 3 }, header)
@@ -158,7 +153,6 @@ stroke(closeBtn, C.OR, 1.5)
 new("Frame", { Position = UDim2.fromOffset(14, 72), Size = UDim2.new(1, -28, 0, 1), BackgroundColor3 = C.DEEP, BorderSizePixel = 0,
     ZIndex = 2 }, Main)
 
--- drag window lewat header
 do
     local dragging, start, startPos
     local dragArea = new("Frame", { Size = UDim2.new(1, -96, 1, 0), BackgroundTransparency = 1, Active = true, ZIndex = 4 }, header)
@@ -175,7 +169,7 @@ do
     track(UIS.InputEnded:Connect(function(i) if isPointer(i) then dragging = false end end))
 end
 
--- ================= WIDGET =================
+-- WIDGETS
 local function setFlag(name, v)
     Flags[name] = v
     for _, f in ipairs(widgets[name] or {}) do f() end
@@ -259,10 +253,9 @@ local function addLabel(parent, text)
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3 }, parent)
 end
 
--- checkbox rarity
 local rarWidgets = {}
 local function refreshRarity()
-    for key, f in pairs(rarWidgets) do f() end
+    for _, f in pairs(rarWidgets) do f() end
 end
 local function addRarityBox(parent, label, key)
     local r = row(parent, 32)
@@ -295,7 +288,7 @@ local function addRarityBox(parent, label, key)
     end)
 end
 
--- ================= KATEGORI (dropdown) =================
+-- KATEGORI
 local quick = new("Frame", { Position = UDim2.fromOffset(14, 82), Size = UDim2.new(1, -28, 0, 88), BackgroundTransparency = 1, ZIndex = 2 }, Main)
 new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, quick)
 addToggle(quick, "Auto Steal", "autosteal")
@@ -348,12 +341,12 @@ local function category(name, icon, order)
     return body
 end
 
-local stealBody  = category("Steal", "🤝", 1)
-local configBody = category("Config", "⚙", 2)
+local stealBody   = category("Steal", "🤝", 1)
+local configBody  = category("Config", "⚙", 2)
 local settingBody = category("Setting", "❤️", 3)
-local debugBody  = category("Debug", "🐞", 4)
+local debugBody   = category("Debug", "🐞", 4)
 
--- status bar
+-- STATUS BAR & LOG
 local statusBar = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -8), Size = UDim2.new(1, -28, 0, 30),
     BackgroundColor3 = C.CARD, BorderSizePixel = 0, ZIndex = 3 }, Main)
 corner(statusBar, 10)
@@ -388,7 +381,6 @@ local function setStatus(t)
     addLog("Status: " .. s)
 end
 
--- buka / tutup (melebar dari atas ke bawah)
 local expanded = false
 local function setExpanded(v)
     expanded = v
@@ -405,7 +397,6 @@ local function setExpanded(v)
 end
 plusBtn.Activated:Connect(function() setExpanded(not expanded) end)
 
--- floating icon
 local floatBtn = new("ImageButton", { Size = UDim2.fromOffset(54, 54), Position = UDim2.new(0, 16, 0.5, -27), BackgroundColor3 = C.CARD,
     Image = "rbxassetid://" .. ICON_ID, ScaleType = Enum.ScaleType.Fit, AutoButtonColor = false, Visible = false, ZIndex = 50 }, gui)
 corner(floatBtn, 27)
@@ -439,8 +430,7 @@ closeBtn.Activated:Connect(function()
     floatBtn.Visible = true
 end)
 
--- ================= ISI KATEGORI =================
--- Steal
+-- ISI KATEGORI
 addToggle(stealBody, "Auto Steal", "autosteal")
 addToggle(stealBody, "Reset Karakter dulu", "resetfirst")
 addToggle(stealBody, "No Scan My Base", "nobase")
@@ -452,7 +442,6 @@ for _, k in ipairs(RARITIES) do
     addRarityBox(stealBody, k:sub(1, 1):upper() .. k:sub(2), k)
 end
 
--- Config
 addSlider(configBody, "Speed Force (WalkSpeed)", "speed", 16, 300)
 addSlider(configBody, "Speed ke Home (cepat)", "hi", 20, 200)
 addSlider(configBody, "Speed ke Home (pelan / tembok)", "lo", 10, 150)
@@ -462,14 +451,12 @@ local btnScanHome = addButton(configBody, "Scan Home Sekarang", function() end)
 local btnSetHome = addButton(configBody, "Set Home = posisi saya", function() end)
 addToggle(configBody, "Prompt apa saja (jika loot tak terdeteksi)", "anyprompt")
 
--- Setting
 addToggle(settingBody, "Anti AFK", "antiafk")
 addButton(settingBody, "Hapus UI", function()
     Flags.autosteal = false
     if gui then gui:Destroy() end
 end)
 
--- Debug
 local function copyText(txt)
     local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
     if clip then
@@ -512,7 +499,7 @@ logBox = new("TextBox", {
 }, logScroll)
 addLog("Init OK | fireproximityprompt=" .. tostring(fireproximityprompt ~= nil))
 
--- ================= LOGIKA =================
+-- LOGIKA
 local function root()
     local c = LP.Character
     return c and c:FindFirstChild("HumanoidRootPart")
@@ -529,7 +516,6 @@ local function put(hrp, pos)
     hrp.CFrame = CFrame.new(pos) * (hrp.CFrame - hrp.CFrame.Position)
 end
 
--- cache prompt
 local prompts = {}
 local function reg(d) if d:IsA("ProximityPrompt") then prompts[d] = true end end
 task.spawn(function()
@@ -553,13 +539,14 @@ local function promptPos(p)
     return part and part.Position
 end
 
--- ---------- scan home / base kita (owner base vs musuh) ----------
+-- DETEKSI BASE
 local homeModel, homeCF, homeSize, homeSpawn, homeManual
 local baseInfo, myBaseRoots, enemyBaseRoots = {}, {}, {}
 local lastScan = 0
 
-local OWNER_HINTS = { "owner", "player", "user", "creator", "pemilik", "ownerid", "userid", "creatorid" }
-local BASE_HINTS  = { "base", "plot", "house", "home", "island", "tower", "land", "territory", "kampung", "rumah", "petak" }
+local OWNER_HINTS  = { "owner", "player", "user", "creator", "pemilik", "ownerid", "userid", "creatorid" }
+local BASE_HINTS   = { "base", "plot", "house", "home", "island", "tower", "land", "territory", "kampung", "rumah", "petak" }
+local SKIP_FOLDERS = { "placed", "conveyor", "machine", "client", "effect", "debris", "loot", "drop", "shop", "lobby", "arena" }
 
 local function lower(s) return string.lower(tostring(s)) end
 local function hasHint(text, hints)
@@ -584,7 +571,6 @@ local function playerFromValue(v)
     return nil
 end
 
--- cek pemilik dari attribute, value anak, dan nama (tidak masuk ke descendant)
 local function ownerShallow(node)
     local ok, attrs = pcall(function() return node:GetAttributes() end)
     if ok and attrs then
@@ -614,7 +600,6 @@ local function ownerShallow(node)
     return nil
 end
 
--- cek pemilik sampai ke descendant (dibatasi supaya tidak lag)
 local function ownerDeep(node)
     local pl = ownerShallow(node)
     if pl then return pl end
@@ -670,7 +655,6 @@ local function addBase(node, owner)
     baseInfo[node] = { owner = owner, cf = cf, size = size }
 end
 
--- folder yang isinya banyak base (Bases / Plots / ...), bukan base model
 local function isBaseContainer(node)
     if not hasHint(node.Name, BASE_HINTS) then return false end
     if node:IsA("Folder") then
@@ -679,7 +663,6 @@ local function isBaseContainer(node)
         end
         return false
     end
-    -- Model: container hanya kalau tidak punya part sendiri
     for _, c in ipairs(node:GetChildren()) do
         if c:IsA("BasePart") then return false end
     end
@@ -693,16 +676,20 @@ end
 local function scanBaseFolder(folder, depth)
     for _, a in ipairs(folder:GetChildren()) do
         if a ~= LP.Character and not a:IsA("Terrain") and not a:IsA("Camera") and (a:IsA("Model") or a:IsA("Folder")) then
-            if isBaseContainer(a) then
-                for _, b in ipairs(a:GetChildren()) do
-                    if b:IsA("Model") or b:IsA("Folder") then addBase(b, ownerDeep(b)) end
-                end
-            elseif hasHint(a.Name, BASE_HINTS) then
-                addBase(a, ownerDeep(a))
-            else
-                local owner = ownerShallow(a)
-                if owner then
-                    addBase(a, owner)
+            if not hasHint(a.Name, SKIP_FOLDERS) then
+                if isBaseContainer(a) then
+                    for _, b in ipairs(a:GetChildren()) do
+                        if b:IsA("Model") or b:IsA("Folder") then addBase(b, ownerDeep(b)) end
+                    end
+                elseif hasHint(a.Name, BASE_HINTS) then
+                    addBase(a, ownerDeep(a))
+                elseif depth == 0 then
+                    local owner = ownerShallow(a)
+                    if owner then
+                        addBase(a, owner)
+                    elseif a:IsA("Folder") then
+                        scanBaseFolder(a, depth + 1)
+                    end
                 elseif a:IsA("Folder") and depth < 2 then
                     scanBaseFolder(a, depth + 1)
                 end
@@ -722,11 +709,9 @@ local function scanHome(force)
     collectBases()
     homeModel, homeCF, homeSize = nil, nil, nil
 
-    -- 1) base yang jelas milik kita
     for _, info in pairs(baseInfo) do
         if info.owner == LP then info.mine = true end
     end
-    -- 2) base yang berisi titik spawn / home manual
     for _, info in pairs(baseInfo) do
         if not info.mine then
             if boxHas(info.cf, info.size, homeSpawn, 25) or boxHas(info.cf, info.size, homeManual, 25) then
@@ -734,7 +719,6 @@ local function scanHome(force)
             end
         end
     end
-    -- 3) kalau masih belum ada, ambil base terdekat dari spawn (jarak wajar)
     local anyMine = false
     for _, info in pairs(baseInfo) do if info.mine then anyMine = true break end end
     if not anyMine and homeSpawn then
@@ -758,7 +742,7 @@ local function scanHome(force)
                 bestArea = area
                 homeModel, homeCF, homeSize = r, info.cf, info.size
             end
-        elseif info.owner and info.owner ~= LP then
+        else
             enemyBaseRoots[r] = true
             nEnemy += 1
         end
@@ -797,7 +781,6 @@ local function inMyBase(pos)
     return false
 end
 
--- base root terdekat dari sebuah prompt (naik ke ancestor)
 local function promptRoot(p)
     local a = p
     while a and a ~= Workspace do
@@ -807,7 +790,18 @@ local function promptRoot(p)
     return nil
 end
 
--- ---------- loot ----------
+-- Deteksi pemilik dari ancestor prompt (misal PlacedItems_<UserId>)
+local function promptOwner(p)
+    local a = p.Parent
+    while a and a ~= Workspace do
+        local pl = ownerShallow(a)
+        if pl then return pl end
+        a = a.Parent
+    end
+    return nil
+end
+
+-- LOOT
 local function rarityIndex(prompt)
     local par = prompt.Parent
     local rootObj = par and ((par:IsA("Model") and par) or par:FindFirstAncestorOfClass("Model") or par)
@@ -821,7 +815,9 @@ local function rarityIndex(prompt)
         end
     end
     scanText(prompt.ObjectText .. " " .. prompt.ActionText)
+    if par then scanText(par.Name) end
     if rootObj then
+        scanText(rootObj.Name)
         for k, v in pairs(rootObj:GetAttributes()) do
             if string.lower(k):find("rarity") and type(v) == "string" then scanText(v) end
         end
@@ -834,13 +830,13 @@ local function rarityIndex(prompt)
 end
 
 local function isStealPrompt(p)
-    if Flags.anyprompt then return true end
     local parName = p.Parent and p.Parent.Name or ""
     local grandName = (p.Parent and p.Parent.Parent and p.Parent.Parent.Name) or ""
     local t = string.lower(p.ActionText .. " " .. p.ObjectText .. " " .. p.Name .. " " .. parName .. " " .. grandName)
     for _, w in ipairs(IGNORE_WORDS) do
         if string.find(t, w, 1, true) then return false end
     end
+    if Flags.anyprompt then return true end
     for _, w in ipairs(STEAL_WORDS) do
         if string.find(t, w, 1, true) then return true end
     end
@@ -868,16 +864,12 @@ local function pickLoot()
                 if pos then
                     local br = promptRoot(p)
                     local info = br and baseInfo[br]
-                    local mine = (info and info.mine) or inMyBase(pos)
+                    local own = (info and info.owner) or promptOwner(p)
+                    local mine = (info and info.mine) or (own == LP) or inMyBase(pos)
+                    local enemy = (own ~= nil and own ~= LP) or (br ~= nil and info ~= nil and not info.mine)
                     local blocked = false
                     if Flags.nobase and mine then blocked = true end
-                    if Flags.enemyonly then
-                        if br and info and info.mine then
-                            blocked = true                       -- di base sendiri
-                        elseif not br and inMyBase(pos) then
-                            blocked = true                       -- tidak ada base root tapi masih area rumah
-                        end
-                    end
+                    if Flags.enemyonly and (mine or not enemy) then blocked = true end
                     if blocked then
                         inBase += 1
                     else
@@ -885,10 +877,9 @@ local function pickLoot()
                         if allowed(idx) then
                             local d = hrp and (pos - hrp.Position).Magnitude or 0
                             local score = idx * 100000 - d
-                            if Flags.enemyonly and br and not (info and info.mine) then score += 5000000 end
+                            if enemy then score += 5000000 end
                             if not bestScore or score > bestScore then
                                 local name = (p.ObjectText ~= "" and p.ObjectText) or (p.Parent and p.Parent.Name) or "Loot"
-                                local enemy = br ~= nil and info ~= nil and info.owner ~= nil and info.owner ~= LP
                                 best = { prompt = p, pos = pos, name = name, rarity = idx, enemy = enemy }
                                 bestScore = score
                             end
@@ -982,7 +973,6 @@ local function firePrompt(p, fallbackPos, tk)
     return ok
 end
 
--- ---------- reset karakter ----------
 local function resetChar(tk)
     local old = LP.Character
     local h = hum()
@@ -999,7 +989,6 @@ local function resetChar(tk)
     return false
 end
 
--- ---------- gerak paksa ke home (tembok: naik lalu turun) ----------
 local function wallAhead(origin, dir, dist)
     local ignore = { LP.Character }
     local params = RaycastParams.new()
@@ -1050,7 +1039,7 @@ local function forceHome(dest, tk)
         local speed = Vals.hi
         if blocked then
             speed = Vals.lo
-            hrp.CFrame = hrp.CFrame + Vector3.new(0, Vals.lift, 0)      -- naik
+            hrp.CFrame = hrp.CFrame + Vector3.new(0, Vals.lift, 0)
             lifted = true
         else
             if lifted then
@@ -1058,7 +1047,7 @@ local function forceHome(dest, tk)
                 local gy = groundBelow(pos)
                 if gy and pos.Y - gy > 4 then
                     local low = Vector3.new(pos.X, gy + 3, pos.Z)
-                    if not wallAhead(low, dir, 8) then                    -- jalur bawah kosong -> turun ke tanah
+                    if not wallAhead(low, dir, 8) then
                         hrp.CFrame = CFrame.new(low) * (hrp.CFrame - hrp.CFrame.Position)
                         lifted = false
                     end
@@ -1070,13 +1059,11 @@ local function forceHome(dest, tk)
         end
         hrp.AssemblyLinearVelocity = Vector3.zero
     end
-    -- batas waktu: langsung TP ke home supaya tidak tersangkut
     local hrp = root()
     if hrp and Flags.autosteal and tk == token then put(hrp, dest + Vector3.new(0, 3, 0)) end
     return false
 end
 
--- ---------- siklus Auto Steal ----------
 local function cycle(tk)
     if not Flags.resetfirst then
         local hrp0 = root()
@@ -1087,7 +1074,7 @@ local function cycle(tk)
         setStatus("Reset karakter...")
         if not resetChar(tk) then return end
         local hrp0 = root()
-        if hrp0 then homeSpawn = hrp0.Position end    -- muncul di base kita
+        if hrp0 then homeSpawn = hrp0.Position end
         scanHome(true)
     end
     if not Flags.autosteal or tk ~= token then return end
@@ -1150,7 +1137,6 @@ hooks.autosteal = function(v)
     end)
 end
 
--- Speed Force
 track(RunService.Heartbeat:Connect(function()
     if Flags.speedforce then
         local h = hum()
@@ -1164,7 +1150,6 @@ hooks.speedforce = function(v)
     end
 end
 
--- tombol Config
 btnScanHome.Activated:Connect(function()
     if scanHome(true) then
         local n = 0
@@ -1204,7 +1189,6 @@ btnDumpPrompts.Activated:Connect(function()
     statusLbl.Text = "Dump prompt selesai (" .. math.min(12, #list) .. ")"
 end)
 
--- Anti AFK
 track(LP.Idled:Connect(function()
     if Flags.antiafk then
         VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
@@ -1218,7 +1202,6 @@ gui.Destroying:Connect(function()
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
 end)
 
--- animasi masuk
 Main.Visible = true
 mainScale.Scale = baseScale * 0.85
 tw(mainScale, 0.3, { Scale = baseScale }, Enum.EasingStyle.Back)

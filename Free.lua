@@ -31,7 +31,7 @@ local RARITY_ALIAS = {
 }
 
 -- STATE
-local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = false, noclip = false, tphome = false }
+local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = false, noclip = false, tphome = false, walktoloot = false }
 local Vals = { speed = 100, wait = 0.35 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
 local hooks = {}
@@ -416,6 +416,7 @@ local debugBody   = addTab("Debug", 4)
 
 addToggle(stealBody, "Auto Steal", "autosteal")
 addToggle(stealBody, "Instant Steal", "instantsteal")
+addToggle(stealBody, "Jalan ke Loot (Anti-TP)", "walktoloot")
 addToggle(stealBody, "TP Langsung ke Home", "tphome")
 addToggle(stealBody, "Noclip Pulang (Risiko Deteksi)", "noclip")
 addToggle(stealBody, "Reset Karakter dulu", "resetfirst")
@@ -930,8 +931,8 @@ local function firePrompt(p, fallbackPos, tk)
         local hrp = root()
         if not hrp then return false end
         local ppos = promptPos(p) or fallbackPos
-        if ppos and (hrp.Position - ppos).Magnitude > 6 then
-            put(hrp, ppos + Vector3.new(0, 3.5, 0))
+        if ppos and (hrp.Position - ppos).Magnitude > 7 then
+            put(hrp, ppos + Vector3.new(0, 1.8, 0))
         end
         if p.Parent and p.Enabled then becameEnabled = true end
         return true
@@ -1044,8 +1045,8 @@ local function setNoclip(on)
     end
 end
 
--- Jalan normal ke home memakai Humanoid:MoveTo + lompat tinggi saat ada tembok
-local function walkHome(dest, tk)
+-- Jalan normal memakai Humanoid:MoveTo + lompat tinggi saat ada tembok
+local function walkTo(dest, tk, stopDist, label)
     if Flags.noclip then setNoclip(true) end
     local t0 = os.clock()
     local lastPos = root() and root().Position
@@ -1063,7 +1064,7 @@ local function walkHome(dest, tk)
         end
         local pos = hrp.Position
         local flat = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
-        if flat.Magnitude < 6 then
+        if flat.Magnitude < (stopDist or 6) then
             reason = "sampai"
             break
         end
@@ -1095,7 +1096,7 @@ local function walkHome(dest, tk)
     local hEnd = hum()
     if hEnd then hEnd.JumpPower = origJP end
     setNoclip(false)
-    addLog("walkHome selesai: " .. reason)
+    addLog((label or "walkTo") .. " selesai: " .. reason)
     return reason == "sampai"
 end
 
@@ -1131,20 +1132,32 @@ local function cycle(tk)
     if not Flags.autosteal or tk ~= token then return end
     local hrp = root()
     if not hrp then return end
-    setStatus("TP ke loot: " .. loot.name)
     local ppos = promptPos(loot.prompt) or loot.pos
-    put(hrp, ppos + Vector3.new(0, 3.5, 0))
-    task.wait(Vals.wait)
+    if Flags.walktoloot then
+        setStatus("Jalan ke loot: " .. loot.name)
+        if not walkTo(ppos, tk, 6, "walkToLoot") then
+            skipUntil[loot.prompt] = os.clock() + 12
+            return
+        end
+    else
+        setStatus("TP ke loot: " .. loot.name)
+        put(hrp, ppos + Vector3.new(0, 1.8, 0))
+        task.wait(Vals.wait)
+    end
     if not Flags.autosteal or tk ~= token then return end
 
     setStatus("Curi: " .. loot.name)
     local okSteal = firePrompt(loot.prompt, loot.pos, tk)
     if not Flags.autosteal or tk ~= token then return end
     if not okSteal then
-        skipUntil[loot.prompt] = os.clock() + 12
-        setStatus("Gagal curi (cooldown 12s), cari lain...")
+        skipUntil[loot.prompt] = os.clock() + 15
+        setStatus("Gagal curi (cooldown 15s), cari lain...")
         task.wait(0.3)
         return
+    end
+    if loot.prompt.Parent and loot.prompt.Enabled then
+        skipUntil[loot.prompt] = os.clock() + 15
+        addLog("Prompt masih aktif setelah firePrompt (kemungkinan ditolak server), cooldown 15s")
     end
 
     local dest = homeDest()
@@ -1160,7 +1173,7 @@ local function cycle(tk)
             task.wait(1.0)
         else
             setStatus("Jalan pulang ke home...")
-            walkHome(dest, tk)
+            walkTo(dest, tk, 6, "walkHome")
         end
     end
     stolen += 1

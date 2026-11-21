@@ -31,7 +31,7 @@ local RARITY_ALIAS = {
 }
 
 -- STATE
-local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = false, noclip = false }
+local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = false, noclip = false, tphome = false }
 local Vals = { speed = 100, wait = 0.35 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
 local hooks = {}
@@ -416,6 +416,7 @@ local debugBody   = addTab("Debug", 4)
 
 addToggle(stealBody, "Auto Steal", "autosteal")
 addToggle(stealBody, "Instant Steal", "instantsteal")
+addToggle(stealBody, "TP Langsung ke Home", "tphome")
 addToggle(stealBody, "Noclip Pulang (Risiko Deteksi)", "noclip")
 addToggle(stealBody, "Reset Karakter dulu", "resetfirst")
 addToggle(stealBody, "No Scan My Base", "nobase")
@@ -896,6 +897,8 @@ local stolen = 0
 local token = 0
 
 local function firePrompt(p, fallbackPos, tk)
+    local tStart = os.clock()
+    local method = "hold"
     local triggered = false
     local trigConn
     pcall(function()
@@ -937,6 +940,7 @@ local function firePrompt(p, fallbackPos, tk)
     if not wasEnabled then task.wait(0.15) end
 
     if (Flags.instantsteal or origHold <= 0.1) and fireproximityprompt then
+        method = "fire"
         if Flags.instantsteal then pcall(function() p.HoldDuration = 0 end) end
         for _ = 1, 3 do
             if done() or not ensureNear() then break end
@@ -946,6 +950,7 @@ local function firePrompt(p, fallbackPos, tk)
     end
 
     if not done() and ensureNear() then
+        method = "hold"
         pcall(function() p.HoldDuration = origHold end)
         pcall(function() p:InputHoldBegin() end)
         local holdWait = math.max(origHold, 0.1) + 0.35
@@ -958,6 +963,7 @@ local function firePrompt(p, fallbackPos, tk)
     end
 
     if not done() and fireproximityprompt and ensureNear() then
+        method = "hold+fire"
         pcall(fireproximityprompt, p)
         task.wait(0.15)
     end
@@ -971,8 +977,8 @@ local function firePrompt(p, fallbackPos, tk)
         end
     end)
     local ok = triggered or not p.Parent or (becameEnabled and not p.Enabled)
-    addLog(("firePrompt: ok=%s trig=%s parent=%s enabled=%s hold=%.2f"):format(
-        tostring(ok), tostring(triggered), tostring(p.Parent ~= nil), tostring(p.Enabled), origHold))
+    addLog(("firePrompt: ok=%s trig=%s m=%s dt=%.2fs wasEn=%s nowEn=%s parent=%s hold=%.2f"):format(
+        tostring(ok), tostring(triggered), method, os.clock() - tStart, tostring(wasEnabled), tostring(p.Enabled), tostring(p.Parent ~= nil), origHold))
     return ok
 end
 
@@ -1134,9 +1140,18 @@ local function cycle(tk)
         return
     end
 
-    setStatus("Jalan pulang ke home...")
     local dest = homeDest()
-    if dest then walkHome(dest, tk) end
+    if dest then
+        if Flags.tphome then
+            setStatus("TP ke home...")
+            local hrpNow = root()
+            if hrpNow then put(hrpNow, dest + Vector3.new(0, 3, 0)) end
+            task.wait(0.3)
+        else
+            setStatus("Jalan pulang ke home...")
+            walkHome(dest, tk)
+        end
+    end
     stolen += 1
     statsLbl.Text = "Steal " .. stolen
 end

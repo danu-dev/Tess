@@ -142,12 +142,12 @@ new("TextLabel", { Position = UDim2.fromOffset(56, 29), Size = UDim2.fromOffset(
     TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 }, header)
 
 local minBtn = new("TextButton", { Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -74, 0, 14), BackgroundColor3 = C.CARD,
-    Text = "—", TextColor3 = C.OR, Font = Enum.Font.GothamBlack, TextSize = 14, AutoButtonColor = false, ZIndex = 5 }, header)
+    Text = "-", TextColor3 = C.OR, Font = Enum.Font.GothamBlack, TextSize = 18, AutoButtonColor = false, ZIndex = 5 }, header)
 corner(minBtn, 8)
 stroke(minBtn, C.DEEP, 1.2)
 
 local closeBtn = new("TextButton", { Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -38, 0, 14), BackgroundColor3 = C.CARD,
-    Text = "✕", TextColor3 = C.TXT, Font = Enum.Font.GothamBold, TextSize = 13, AutoButtonColor = false, ZIndex = 5 }, header)
+    Text = "X", TextColor3 = C.TXT, Font = Enum.Font.GothamBold, TextSize = 13, AutoButtonColor = false, ZIndex = 5 }, header)
 corner(closeBtn, 8)
 stroke(closeBtn, C.DEEP, 1.2)
 
@@ -367,7 +367,7 @@ end
 local minimized = false
 local function setMinimized(v)
     minimized = v
-    minBtn.Text = v and "□" or "—"
+    minBtn.Text = v and "+" or "-"
     tabBar.Visible = not v
     contentWrap.Visible = not v
     statusBar.Visible = not v
@@ -880,7 +880,7 @@ local function pickLoot()
                             if enemy then score += 5000000 end
                             if not bestScore or score > bestScore then
                                 local name = (p.ObjectText ~= "" and p.ObjectText) or (p.Parent and p.Parent.Name) or "Loot"
-                                best = { prompt = p, pos = pos, name = name, rarity = idx, enemy = enemy, enabled = p.Enabled }
+                                best = { prompt = p, pos = pos, name = name, rarity = idx, enemy = enemy, enabled = p.Enabled, owner = own, base = br }
                                 bestScore = score
                             end
                         else
@@ -1149,15 +1149,21 @@ local function cycle(tk)
     setStatus("Curi: " .. loot.name)
     local okSteal = firePrompt(loot.prompt, loot.pos, tk)
     if not Flags.autosteal or tk ~= token then return end
-    if not okSteal then
-        skipUntil[loot.prompt] = os.clock() + 15
-        setStatus("Gagal curi (cooldown 15s), cari lain...")
+    if not okSteal or (loot.prompt.Parent and loot.prompt.Enabled) then
+        local untilT = os.clock() + 15
+        skipUntil[loot.prompt] = untilT
+        -- Cooldown seluruh prompt milik base/owner yang sama jika base terkunci
+        if loot.owner or loot.base then
+            for p in pairs(prompts) do
+                if p.Parent and ((loot.base and promptRoot(p) == loot.base) or (loot.owner and promptOwner(p) == loot.owner)) then
+                    skipUntil[p] = untilT
+                end
+            end
+        end
+        setStatus("Base terkunci / ditolak (cooldown 15s)")
+        addLog("Steal ditolak server, skip base/loot 15s")
         task.wait(0.3)
         return
-    end
-    if loot.prompt.Parent and loot.prompt.Enabled then
-        skipUntil[loot.prompt] = os.clock() + 15
-        addLog("Prompt masih aktif setelah firePrompt (kemungkinan ditolak server), cooldown 15s")
     end
 
     local dest = homeDest()

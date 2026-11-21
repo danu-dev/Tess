@@ -750,6 +750,13 @@ end
 
 local function homeDest()
     if homeManual then return homeManual end
+    if homeModel then
+        for _, d in ipairs(homeModel:GetDescendants()) do
+            if d:IsA("BasePart") and (string.find(lower(d.Name), "collection", 1, true) or lower(d.Name) == "spawn") then
+                return d.Position
+            end
+        end
+    end
     if homeSpawn then return homeSpawn end
     if homeCF then return homeCF.Position end
     local r = root()
@@ -1145,8 +1152,12 @@ local function cycle(tk)
         if Flags.tphome then
             setStatus("TP ke home...")
             local hrpNow = root()
-            if hrpNow then put(hrpNow, dest + Vector3.new(0, 3, 0)) end
-            task.wait(0.3)
+            if hrpNow then
+                put(hrpNow, dest + Vector3.new(0, 3, 0))
+                local hNow = hum()
+                if hNow then hNow:MoveTo(dest) end
+            end
+            task.wait(1.0)
         else
             setStatus("Jalan pulang ke home...")
             walkHome(dest, tk)

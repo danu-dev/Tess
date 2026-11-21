@@ -31,7 +31,7 @@ local RARITY_ALIAS = {
 }
 
 -- STATE
-local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false }
+local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true }
 local Vals = { speed = 100, hi = 100, lo = 50, wait = 0.4, lift = 4 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
 local hooks = {}
@@ -435,6 +435,7 @@ addToggle(stealBody, "Auto Steal", "autosteal")
 addToggle(stealBody, "Reset Karakter dulu", "resetfirst")
 addToggle(stealBody, "No Scan My Base", "nobase")
 addToggle(stealBody, "Hanya Base Musuh", "enemyonly")
+addToggle(stealBody, "Coba Loot Disabled", "trydisabled")
 addToggle(stealBody, "Speed Force", "speedforce")
 addLabel(stealBody, "Rarity Loot")
 addRarityBox(stealBody, "All", "all")
@@ -848,18 +849,24 @@ local function allowed(idx)
     return idx > 0 and RarSel[RARITIES[idx]] == true
 end
 
+local skipUntil = {}
+
 local function pickLoot()
     local hrp = root()
+    local now = os.clock()
     local best, bestScore
-    local total, disabled, notSteal, inBase, rarSkip = 0, 0, 0, 0, 0
+    local total, disabled, notSteal, inBase, rarSkip, coolSkip = 0, 0, 0, 0, 0, 0
     for p in pairs(prompts) do
         if p.Parent and not (LP.Character and p:IsDescendantOf(LP.Character)) then
             total += 1
-            if not p.Enabled then
-                disabled += 1
-            elseif not isStealPrompt(p) then
+            if not isStealPrompt(p) then
                 notSteal += 1
+            elseif not p.Enabled and not Flags.trydisabled then
+                disabled += 1
+            elseif skipUntil[p] and now < skipUntil[p] then
+                coolSkip += 1
             else
+                if not p.Enabled then disabled += 1 end
                 local pos = promptPos(p)
                 if pos then
                     local br = promptRoot(p)
@@ -877,10 +884,11 @@ local function pickLoot()
                         if allowed(idx) then
                             local d = hrp and (pos - hrp.Position).Magnitude or 0
                             local score = idx * 100000 - d
+                            if p.Enabled then score += 20000000 end
                             if enemy then score += 5000000 end
                             if not bestScore or score > bestScore then
                                 local name = (p.ObjectText ~= "" and p.ObjectText) or (p.Parent and p.Parent.Name) or "Loot"
-                                best = { prompt = p, pos = pos, name = name, rarity = idx, enemy = enemy }
+                                best = { prompt = p, pos = pos, name = name, rarity = idx, enemy = enemy, enabled = p.Enabled }
                                 bestScore = score
                             end
                         else
@@ -892,13 +900,13 @@ local function pickLoot()
         end
     end
     if best then
-        addLog(("Loot dipilih: %s | act=%q obj=%q hold=%.2f rar=%d enemy=%s"):format(
-            best.name, best.prompt.ActionText, best.prompt.ObjectText, best.prompt.HoldDuration, best.rarity, tostring(best.enemy)))
+        addLog(("Loot dipilih: %s | act=%q obj=%q en=%s hold=%.2f rar=%d enemy=%s"):format(
+            best.name, best.prompt.ActionText, best.prompt.ObjectText, tostring(best.enabled), best.prompt.HoldDuration, best.rarity, tostring(best.enemy)))
     else
-        addLog(("PickLoot nil (total=%d disabled=%d notSteal=%d inBase=%d rarSkip=%d)"):format(
-            total, disabled, notSteal, inBase, rarSkip))
+        addLog(("PickLoot nil (total=%d disSteal=%d notSteal=%d inBase=%d rarSkip=%d cd=%d)"):format(
+            total, disabled, notSteal, inBase, rarSkip, coolSkip))
     end
-    return best
+    return best, disabled, rarSkip
 end
 
 local stolen = 0
@@ -913,6 +921,8 @@ local function firePrompt(p, fallbackPos, tk)
         end)
     end)
 
+    local wasEnabled = p.Enabled
+    local becameEnabled = wasEnabled
     local origHold, origDist, origLos = 0, 10, true
     pcall(function()
         origHold = p.HoldDuration
@@ -929,11 +939,19 @@ local function firePrompt(p, fallbackPos, tk)
         if ppos then
             put(hrp, ppos + Vector3.new(0, 2.5, 0))
         end
+        if p.Parent and p.Enabled then becameEnabled = true end
         return true
     end
 
     local function done()
-        return triggered or not Flags.autosteal or tk ~= token or not p.Parent or not p.Enabled
+        if triggered or not Flags.autosteal or tk ~= token or not p.Parent then return true end
+        if becameEnabled and not p.Enabled then return true end
+        return false
+    end
+
+    if not wasEnabled then
+        keepNear()
+        task.wait(0.15)
     end
 
     if fireproximityprompt then
@@ -967,7 +985,7 @@ local function firePrompt(p, fallbackPos, tk)
             p.RequiresLineOfSight = origLos
         end
     end)
-    local ok = triggered or not p.Parent or not p.Enabled
+    local ok = triggered or not p.Parent or (becameEnabled and not p.Enabled)
     addLog(("firePrompt: ok=%s trig=%s parent=%s enabled=%s hold=%.2f"):format(
         tostring(ok), tostring(triggered), tostring(p.Parent ~= nil), tostring(p.Enabled), origHold))
     return ok
@@ -1080,9 +1098,15 @@ local function cycle(tk)
     if not Flags.autosteal or tk ~= token then return end
 
     setStatus("Scan loot...")
-    local loot = pickLoot()
+    local loot, disCount, rarSkipCount = pickLoot()
     if not loot then
-        setStatus("Loot tidak ditemukan (sesuai rarity)")
+        if rarSkipCount > 0 then
+            setStatus("Loot tidak ditemukan (sesuai rarity)")
+        elseif disCount > 0 then
+            setStatus("Loot terkunci/disabled (" .. disCount .. ")")
+        else
+            setStatus("Loot musuh tidak ditemukan")
+        end
         task.wait(1.5)
         return
     end
@@ -1103,7 +1127,8 @@ local function cycle(tk)
     local okSteal = firePrompt(loot.prompt, loot.pos, tk)
     if not Flags.autosteal or tk ~= token then return end
     if not okSteal then
-        setStatus("Gagal curi, ulang...")
+        skipUntil[loot.prompt] = os.clock() + 12
+        setStatus("Gagal curi (cooldown 12s), cari lain...")
         task.wait(0.3)
         return
     end

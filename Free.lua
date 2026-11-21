@@ -1088,14 +1088,6 @@ local function cycle(tk)
         if hrp0 and not homeSpawn then homeSpawn = hrp0.Position end
     end
     scanHome()
-    if Flags.resetfirst then
-        setStatus("Reset karakter...")
-        if not resetChar(tk) then return end
-        local hrp0 = root()
-        if hrp0 then homeSpawn = hrp0.Position end
-        scanHome(true)
-    end
-    if not Flags.autosteal or tk ~= token then return end
 
     setStatus("Scan loot...")
     local loot, disCount, rarSkipCount = pickLoot()
@@ -1110,6 +1102,16 @@ local function cycle(tk)
         task.wait(1.5)
         return
     end
+
+    if Flags.resetfirst then
+        setStatus("Reset karakter...")
+        if not resetChar(tk) then return end
+        local hrp0 = root()
+        if hrp0 then homeSpawn = hrp0.Position end
+        scanHome(true)
+        loot = pickLoot() or loot
+    end
+    if not Flags.autosteal or tk ~= token then return end
     local hrp = root()
     if not hrp then return end
     setStatus("TP ke loot: " .. loot.name)

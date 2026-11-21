@@ -31,7 +31,7 @@ local RARITY_ALIAS = {
 }
 
 -- STATE
-local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = true, noclip = true }
+local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true, instantsteal = true, noclip = false }
 local Vals = { speed = 100, wait = 0.35 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
 local hooks = {}
@@ -416,7 +416,7 @@ local debugBody   = addTab("Debug", 4)
 
 addToggle(stealBody, "Auto Steal", "autosteal")
 addToggle(stealBody, "Instant Steal", "instantsteal")
-addToggle(stealBody, "Noclip Pulang (Tembus Tembok)", "noclip")
+addToggle(stealBody, "Noclip Pulang (Risiko Deteksi)", "noclip")
 addToggle(stealBody, "Reset Karakter dulu", "resetfirst")
 addToggle(stealBody, "No Scan My Base", "nobase")
 addToggle(stealBody, "Hanya Base Musuh", "enemyonly")
@@ -1031,7 +1031,7 @@ local function setNoclip(on)
     end
 end
 
--- Jalan normal ke home memakai Humanoid:MoveTo + Noclip agar tembus tembok tanpa rubberband
+-- Jalan normal ke home memakai Humanoid:MoveTo + lompat tinggi saat ada tembok
 local function walkHome(dest, tk)
     if Flags.noclip then setNoclip(true) end
     local t0 = os.clock()
@@ -1039,6 +1039,8 @@ local function walkHome(dest, tk)
     local lastMove = os.clock()
     local sideDir = 1
     local reached = false
+    local h0 = hum()
+    local origJP = h0 and h0.JumpPower or 50
     while Flags.autosteal and tk == token and os.clock() - t0 < 45 do
         local hrp = root()
         local h = hum()
@@ -1052,14 +1054,18 @@ local function walkHome(dest, tk)
 
         h:MoveTo(dest)
         local dir = flat.Unit
-        if not Flags.noclip and wallAhead(pos, dir, 4.5) then
+        if not Flags.noclip and wallAhead(pos, dir, 5) then
+            h.UseJumpPower = true
+            h.JumpPower = 85
             h.Jump = true
         end
 
         if lastPos and (pos - lastPos).Magnitude > 1 then
             lastPos = pos
             lastMove = os.clock()
-        elseif os.clock() - lastMove > 1.2 then
+        elseif os.clock() - lastMove > 1.0 then
+            h.UseJumpPower = true
+            h.JumpPower = 85
             h.Jump = true
             local perp = Vector3.new(-dir.Z, 0, dir.X) * sideDir * 8
             sideDir = -sideDir
@@ -1070,6 +1076,8 @@ local function walkHome(dest, tk)
         end
         task.wait(0.25)
     end
+    local hEnd = hum()
+    if hEnd then hEnd.JumpPower = origJP end
     setNoclip(false)
     return reached
 end

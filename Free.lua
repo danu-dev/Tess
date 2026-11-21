@@ -32,7 +32,7 @@ local RARITY_ALIAS = {
 
 -- STATE
 local Flags = { autosteal = false, speedforce = false, resetfirst = true, nobase = true, enemyonly = true, antiafk = true, anyprompt = false, trydisabled = true }
-local Vals = { speed = 100, hi = 100, lo = 50, wait = 0.4, lift = 4 }
+local Vals = { speed = 100, wait = 0.35 }
 local RarSel = { all = true, common = false, uncommon = false, rare = false, epic = false, legendary = false, mythic = false, secret = false }
 local hooks = {}
 local widgets = {}
@@ -42,14 +42,15 @@ if env.__SenarBTDL then pcall(env.__SenarBTDL) end
 
 -- UI HELPERS
 local C = {
-    BG    = Color3.fromRGB(12, 9, 7),
-    CARD  = Color3.fromRGB(24, 17, 12),
-    CARD2 = Color3.fromRGB(38, 26, 16),
+    BG    = Color3.fromRGB(13, 10, 8),
+    PANEL = Color3.fromRGB(20, 15, 11),
+    CARD  = Color3.fromRGB(27, 20, 14),
+    CARD2 = Color3.fromRGB(42, 30, 20),
     OR    = Color3.fromRGB(255, 122, 0),
-    OR2   = Color3.fromRGB(255, 176, 70),
-    DEEP  = Color3.fromRGB(125, 54, 0),
+    OR2   = Color3.fromRGB(255, 178, 76),
+    DEEP  = Color3.fromRGB(115, 50, 0),
     TXT   = Color3.fromRGB(255, 255, 255),
-    SUB   = Color3.fromRGB(170, 152, 138),
+    SUB   = Color3.fromRGB(168, 152, 138),
 }
 
 local function new(class, props, parent)
@@ -104,58 +105,55 @@ env.__SenarBTDL = function()
 end
 
 -- WINDOW
-local W, MIN_H, FULL_H = 340, 214, 452
+local W, HEAD_H, FULL_H = 360, 56, 430
 local cam0 = workspace.CurrentCamera
 local vp = cam0 and cam0.ViewportSize or Vector2.new(800, 400)
-local baseScale = math.clamp(math.min(vp.X / (W + 40), vp.Y / (FULL_H + 40)), 0.5, 1.1)
+local baseScale = math.clamp(math.min(vp.X / (W + 32), vp.Y / (FULL_H + 32)), 0.5, 1.1)
 
 local Main = new("Frame", {
     Name = "Main", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, -FULL_H * baseScale / 2),
-    Size = UDim2.fromOffset(W, MIN_H), BackgroundColor3 = C.BG, BorderSizePixel = 0, ClipsDescendants = true,
+    Size = UDim2.fromOffset(W, FULL_H), BackgroundColor3 = C.BG, BorderSizePixel = 0, ClipsDescendants = true,
 }, gui)
-corner(Main, 18)
+corner(Main, 16)
 local mainScale = new("UIScale", { Scale = baseScale }, Main)
-stroke(Main, C.OR, 2)
+stroke(Main, C.OR, 1.8)
 
 new("ImageLabel", {
     Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = "rbxassetid://" .. BG_ID, ScaleType = Enum.ScaleType.Crop,
-    ImageTransparency = 0.82, ZIndex = 0,
+    ImageTransparency = 0.86, ZIndex = 0,
 }, Main)
 
-local header = new("Frame", { Size = UDim2.new(1, 0, 0, 72), BackgroundTransparency = 1, ZIndex = 2 }, Main)
-local logoBox = new("Frame", { Size = UDim2.fromOffset(48, 48), Position = UDim2.fromOffset(14, 12), BackgroundColor3 = C.CARD,
+-- HEADER
+local header = new("Frame", { Size = UDim2.new(1, 0, 0, HEAD_H), BackgroundColor3 = C.PANEL, BorderSizePixel = 0, ZIndex = 2 }, Main)
+new("Frame", { Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = C.DEEP, BorderSizePixel = 0, ZIndex = 3 }, header)
+
+local logoBox = new("Frame", { Size = UDim2.fromOffset(36, 36), Position = UDim2.fromOffset(12, 10), BackgroundColor3 = C.CARD,
     BorderSizePixel = 0, ZIndex = 3 }, header)
-corner(logoBox, 12)
-stroke(logoBox, C.OR, 1.5)
-new("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "S", TextColor3 = C.OR,
-    Font = Enum.Font.GothamBlack, TextSize = 24, ZIndex = 3 }, logoBox)
-new("ImageLabel", { Size = UDim2.new(1, -6, 1, -6), Position = UDim2.fromOffset(3, 3), BackgroundTransparency = 1,
+corner(logoBox, 10)
+stroke(logoBox, C.OR, 1.3)
+new("ImageLabel", { Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2), BackgroundTransparency = 1,
     Image = "rbxassetid://" .. ICON_ID, ScaleType = Enum.ScaleType.Fit, ZIndex = 4 }, logoBox)
 
-new("Frame", { Size = UDim2.fromOffset(2, 34), Position = UDim2.fromOffset(72, 19), BackgroundColor3 = C.OR, BorderSizePixel = 0,
-    ZIndex = 3 }, header)
-new("TextLabel", { Position = UDim2.fromOffset(82, 12), Size = UDim2.fromOffset(160, 24), BackgroundTransparency = 1,
+new("TextLabel", { Position = UDim2.fromOffset(56, 8), Size = UDim2.fromOffset(180, 20), BackgroundTransparency = 1,
     Text = "<font color='#FFFFFF'>Senar</font> <font color='#FF7A00'>Hub</font>", RichText = true,
-    Font = Enum.Font.GothamBold, TextSize = 19, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 }, header)
-new("TextLabel", { Position = UDim2.fromOffset(82, 38), Size = UDim2.fromOffset(170, 18), BackgroundTransparency = 1,
-    Text = GAME_NAME, TextColor3 = C.SUB, Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+    Font = Enum.Font.GothamBold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 }, header)
+new("TextLabel", { Position = UDim2.fromOffset(56, 29), Size = UDim2.fromOffset(190, 16), BackgroundTransparency = 1,
+    Text = GAME_NAME, TextColor3 = C.SUB, Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 }, header)
 
-local plusBtn = new("TextButton", { Size = UDim2.fromOffset(32, 32), Position = UDim2.new(1, -84, 0, 20), BackgroundColor3 = C.CARD,
-    Text = "+", TextColor3 = C.OR, Font = Enum.Font.GothamBlack, TextSize = 20, AutoButtonColor = false, ZIndex = 5 }, header)
-corner(plusBtn, 16)
-stroke(plusBtn, C.OR, 1.5)
-local closeBtn = new("TextButton", { Size = UDim2.fromOffset(32, 32), Position = UDim2.new(1, -44, 0, 20), BackgroundColor3 = C.CARD,
-    Text = "X", TextColor3 = C.TXT, Font = Enum.Font.GothamBlack, TextSize = 15, AutoButtonColor = false, ZIndex = 5 }, header)
-corner(closeBtn, 16)
-stroke(closeBtn, C.OR, 1.5)
+local minBtn = new("TextButton", { Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -74, 0, 14), BackgroundColor3 = C.CARD,
+    Text = "—", TextColor3 = C.OR, Font = Enum.Font.GothamBlack, TextSize = 14, AutoButtonColor = false, ZIndex = 5 }, header)
+corner(minBtn, 8)
+stroke(minBtn, C.DEEP, 1.2)
 
-new("Frame", { Position = UDim2.fromOffset(14, 72), Size = UDim2.new(1, -28, 0, 1), BackgroundColor3 = C.DEEP, BorderSizePixel = 0,
-    ZIndex = 2 }, Main)
+local closeBtn = new("TextButton", { Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -38, 0, 14), BackgroundColor3 = C.CARD,
+    Text = "✕", TextColor3 = C.TXT, Font = Enum.Font.GothamBold, TextSize = 13, AutoButtonColor = false, ZIndex = 5 }, header)
+corner(closeBtn, 8)
+stroke(closeBtn, C.DEEP, 1.2)
 
 do
     local dragging, start, startPos
-    local dragArea = new("Frame", { Size = UDim2.new(1, -96, 1, 0), BackgroundTransparency = 1, Active = true, ZIndex = 4 }, header)
+    local dragArea = new("Frame", { Size = UDim2.new(1, -84, 1, 0), BackgroundTransparency = 1, Active = true, ZIndex = 4 }, header)
     dragArea.InputBegan:Connect(function(i)
         if isPointer(i) then dragging, start, startPos = true, i.Position, Main.Position end
     end)
@@ -169,6 +167,47 @@ do
     track(UIS.InputEnded:Connect(function(i) if isPointer(i) then dragging = false end end))
 end
 
+-- TAB BAR
+local tabBar = new("Frame", { Position = UDim2.fromOffset(12, HEAD_H + 8), Size = UDim2.new(1, -24, 0, 32),
+    BackgroundColor3 = C.PANEL, BorderSizePixel = 0, ZIndex = 2 }, Main)
+corner(tabBar, 10)
+stroke(tabBar, C.DEEP, 1)
+pad(tabBar, 3, 3, 3, 3)
+new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4),
+    HorizontalFlex = Enum.UIFlexAlignment.Fill, SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
+
+local contentWrap = new("Frame", { Position = UDim2.fromOffset(12, HEAD_H + 46), Size = UDim2.new(1, -24, 1, -(HEAD_H + 46 + 40)),
+    BackgroundTransparency = 1, ClipsDescendants = true, ZIndex = 2 }, Main)
+
+local tabs = {}
+local activeTab
+local function addTab(name, order)
+    local btn = new("TextButton", { Size = UDim2.new(0.25, -3, 1, 0), BackgroundColor3 = C.CARD, BackgroundTransparency = 1,
+        Text = name, TextColor3 = C.SUB, Font = Enum.Font.GothamBold, TextSize = 12, AutoButtonColor = false, LayoutOrder = order, ZIndex = 3 }, tabBar)
+    corner(btn, 8)
+    local page = new("ScrollingFrame", {
+        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
+        ScrollBarThickness = 3, ScrollBarImageColor3 = C.OR, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
+        Visible = false, ZIndex = 2,
+    }, contentWrap)
+    pad(page, 1, 2, 4, 4)
+    new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
+    local entry = { btn = btn, page = page }
+    table.insert(tabs, entry)
+    local function selectTab()
+        activeTab = entry
+        for _, t in ipairs(tabs) do
+            local sel = (t == entry)
+            t.page.Visible = sel
+            t.btn.TextColor3 = sel and Color3.fromRGB(20, 12, 4) or C.SUB
+            tw(t.btn, 0.15, { BackgroundTransparency = sel and 0 or 1, BackgroundColor3 = sel and C.OR or C.CARD })
+        end
+    end
+    btn.Activated:Connect(selectTab)
+    if #tabs == 1 then selectTab() end
+    return page
+end
+
 -- WIDGETS
 local function setFlag(name, v)
     Flags[name] = v
@@ -176,28 +215,27 @@ local function setFlag(name, v)
     if hooks[name] then task.spawn(hooks[name], v) end
 end
 
-local function row(parent, h, order)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = C.CARD, BorderSizePixel = 0, LayoutOrder = order or 0,
-        ZIndex = 3 }, parent)
-    corner(f, 12)
+local function row(parent, h)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = C.CARD, BorderSizePixel = 0, ZIndex = 3 }, parent)
+    corner(f, 10)
     stroke(f, C.DEEP, 1)
     return f
 end
 
 local function addToggle(parent, label, flag)
-    local r = row(parent, 38)
-    new("TextLabel", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -72, 1, 0), BackgroundTransparency = 1, Text = label,
-        TextColor3 = C.TXT, Font = Enum.Font.GothamMedium, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 }, r)
-    local track_ = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(42, 22),
+    local r = row(parent, 36)
+    new("TextLabel", { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -66, 1, 0), BackgroundTransparency = 1, Text = label,
+        TextColor3 = C.TXT, Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 }, r)
+    local track_ = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(38, 20),
         BackgroundColor3 = C.CARD2, BorderSizePixel = 0, ZIndex = 4 }, r)
-    corner(track_, 11)
-    local knob = new("Frame", { Position = UDim2.fromOffset(3, 3), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = C.SUB,
+    corner(track_, 10)
+    local knob = new("Frame", { Position = UDim2.fromOffset(3, 3), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = C.SUB,
         BorderSizePixel = 0, ZIndex = 5 }, track_)
-    corner(knob, 8)
+    corner(knob, 7)
     local function refresh()
         local on = Flags[flag]
         tw(track_, 0.16, { BackgroundColor3 = on and C.OR or C.CARD2 })
-        tw(knob, 0.16, { Position = on and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3), BackgroundColor3 = on and C.TXT or C.SUB })
+        tw(knob, 0.16, { Position = on and UDim2.fromOffset(21, 3) or UDim2.fromOffset(3, 3), BackgroundColor3 = on and C.TXT or C.SUB })
     end
     widgets[flag] = widgets[flag] or {}
     table.insert(widgets[flag], refresh)
@@ -207,13 +245,13 @@ local function addToggle(parent, label, flag)
 end
 
 local function addSlider(parent, label, key, minV, maxV, onChange)
-    local r = row(parent, 50)
-    new("TextLabel", { Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -90, 0, 20), BackgroundTransparency = 1, Text = label,
-        TextColor3 = C.TXT, Font = Enum.Font.GothamMedium, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 }, r)
-    local valLbl = new("TextLabel", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 4), Size = UDim2.fromOffset(70, 20),
-        BackgroundTransparency = 1, Text = tostring(Vals[key]), TextColor3 = C.OR2, Font = Enum.Font.GothamBold, TextSize = 13,
+    local r = row(parent, 48)
+    new("TextLabel", { Position = UDim2.fromOffset(12, 4), Size = UDim2.new(1, -84, 0, 18), BackgroundTransparency = 1, Text = label,
+        TextColor3 = C.TXT, Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 }, r)
+    local valLbl = new("TextLabel", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 4), Size = UDim2.fromOffset(64, 18),
+        BackgroundTransparency = 1, Text = tostring(Vals[key]), TextColor3 = C.OR2, Font = Enum.Font.GothamBold, TextSize = 12,
         TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 4 }, r)
-    local bar = new("Frame", { Position = UDim2.fromOffset(14, 34), Size = UDim2.new(1, -28, 0, 6), BackgroundColor3 = C.CARD2,
+    local bar = new("Frame", { Position = UDim2.fromOffset(12, 32), Size = UDim2.new(1, -24, 0, 6), BackgroundColor3 = C.CARD2,
         BorderSizePixel = 0, ZIndex = 4 }, r)
     corner(bar, 3)
     local fill = new("Frame", { Size = UDim2.fromScale((Vals[key] - minV) / (maxV - minV), 1), BackgroundColor3 = C.OR,
@@ -222,7 +260,7 @@ local function addSlider(parent, label, key, minV, maxV, onChange)
     local knob = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new((Vals[key] - minV) / (maxV - minV), 0, 0.5, 0),
         Size = UDim2.fromOffset(14, 14), BackgroundColor3 = C.TXT, BorderSizePixel = 0, ZIndex = 6 }, bar)
     corner(knob, 7)
-    local hit = new("TextButton", { Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
+    local hit = new("TextButton", { Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
         Text = "", ZIndex = 7 }, r)
     local sliding = false
     local function setFrom(x)
@@ -240,16 +278,16 @@ local function addSlider(parent, label, key, minV, maxV, onChange)
 end
 
 local function addButton(parent, text, cb)
-    local b = new("TextButton", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = C.OR, Text = text, TextColor3 = Color3.fromRGB(20, 12, 4),
-        Font = Enum.Font.GothamBold, TextSize = 13, AutoButtonColor = false, ZIndex = 3 }, parent)
-    corner(b, 12)
+    local b = new("TextButton", { Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = C.OR, Text = text, TextColor3 = Color3.fromRGB(20, 12, 4),
+        Font = Enum.Font.GothamBold, TextSize = 12, AutoButtonColor = false, ZIndex = 3 }, parent)
+    corner(b, 10)
     b.Activated:Connect(function() task.spawn(cb) end)
     return b
 end
 
 local function addLabel(parent, text)
     return new("TextLabel", { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, Text = text, TextColor3 = C.SUB,
-        Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
+        Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
         AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 3 }, parent)
 end
 
@@ -258,15 +296,17 @@ local function refreshRarity()
     for _, f in pairs(rarWidgets) do f() end
 end
 local function addRarityBox(parent, label, key)
-    local r = row(parent, 32)
-    local box = new("Frame", { Position = UDim2.fromOffset(12, 7), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = C.CARD2,
+    local r = new("Frame", { Size = UDim2.new(0.5, -3, 0, 30), BackgroundColor3 = C.CARD, BorderSizePixel = 0, ZIndex = 3 }, parent)
+    corner(r, 8)
+    stroke(r, C.DEEP, 1)
+    local box = new("Frame", { Position = UDim2.fromOffset(8, 7), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = C.CARD2,
         BorderSizePixel = 0, ZIndex = 4 }, r)
-    corner(box, 5)
+    corner(box, 4)
     stroke(box, C.DEEP, 1)
     local mark = new("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", TextColor3 = Color3.fromRGB(20, 12, 4),
-        Font = Enum.Font.GothamBlack, TextSize = 13, ZIndex = 5 }, box)
-    new("TextLabel", { Position = UDim2.fromOffset(40, 0), Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Text = label,
-        TextColor3 = C.TXT, Font = Enum.Font.GothamMedium, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 }, r)
+        Font = Enum.Font.GothamBlack, TextSize = 12, ZIndex = 5 }, box)
+    new("TextLabel", { Position = UDim2.fromOffset(30, 0), Size = UDim2.new(1, -34, 1, 0), BackgroundTransparency = 1, Text = label,
+        TextColor3 = C.TXT, Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 }, r)
     rarWidgets[key] = function()
         local on = RarSel[key]
         box.BackgroundColor3 = on and C.OR or C.CARD2
@@ -288,77 +328,19 @@ local function addRarityBox(parent, label, key)
     end)
 end
 
--- KATEGORI
-local quick = new("Frame", { Position = UDim2.fromOffset(14, 82), Size = UDim2.new(1, -28, 0, 88), BackgroundTransparency = 1, ZIndex = 2 }, Main)
-new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, quick)
-addToggle(quick, "Auto Steal", "autosteal")
-addToggle(quick, "Speed Force", "speedforce")
-
-local catArea = new("ScrollingFrame", {
-    Position = UDim2.fromOffset(14, 82), Size = UDim2.new(1, -28, 1, -(82 + 46)), BackgroundTransparency = 1, BorderSizePixel = 0,
-    ScrollBarThickness = 3, ScrollBarImageColor3 = C.OR, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
-    Visible = false, ZIndex = 2,
-}, Main)
-new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, catArea)
-
-local cats = {}
-local function category(name, icon, order)
-    local holder = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
-        LayoutOrder = order, ZIndex = 2 }, catArea)
-    new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-    local head = new("TextButton", { Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.CARD, Text = "", AutoButtonColor = false,
-        LayoutOrder = 0, ZIndex = 3 }, holder)
-    corner(head, 23)
-    local st = stroke(head, C.DEEP, 1.5)
-    new("TextLabel", { Position = UDim2.fromOffset(14, 0), Size = UDim2.fromOffset(30, 46), BackgroundTransparency = 1, Text = icon,
-        TextColor3 = C.OR, Font = Enum.Font.GothamBold, TextSize = 20, ZIndex = 4 }, head)
-    new("Frame", { Position = UDim2.fromOffset(52, 11), Size = UDim2.fromOffset(2, 24), BackgroundColor3 = C.OR, BorderSizePixel = 0,
-        ZIndex = 4 }, head)
-    new("TextLabel", { Position = UDim2.fromOffset(66, 0), Size = UDim2.new(1, -110, 1, 0), BackgroundTransparency = 1, Text = name,
-        TextColor3 = C.TXT, Font = Enum.Font.GothamBold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 }, head)
-    local chev = new("TextLabel", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0), Size = UDim2.fromOffset(20, 20),
-        BackgroundTransparency = 1, Text = "›", TextColor3 = C.OR, Font = Enum.Font.GothamBlack, TextSize = 24, ZIndex = 4 }, head)
-    local body = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.CARD,
-        BackgroundTransparency = 0.4, Visible = false, LayoutOrder = 1, ZIndex = 3 }, holder)
-    corner(body, 14)
-    pad(body, 8, 8, 8, 8)
-    new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, body)
-    local entry = { body = body, chev = chev, st = st }
-    table.insert(cats, entry)
-    head.Activated:Connect(function()
-        local open = not body.Visible
-        for _, c in ipairs(cats) do
-            c.body.Visible = false
-            c.chev.Rotation = 0
-            c.st.Color = C.DEEP
-        end
-        if open then
-            body.Visible = true
-            chev.Rotation = 90
-            st.Color = C.OR
-        end
-    end)
-    return body
-end
-
-local stealBody   = category("Steal", "🤝", 1)
-local configBody  = category("Config", "⚙", 2)
-local settingBody = category("Setting", "❤️", 3)
-local debugBody   = category("Debug", "🐞", 4)
-
 -- STATUS BAR & LOG
-local statusBar = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -8), Size = UDim2.new(1, -28, 0, 30),
-    BackgroundColor3 = C.CARD, BorderSizePixel = 0, ZIndex = 3 }, Main)
-corner(statusBar, 10)
+local statusBar = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -8), Size = UDim2.new(1, -24, 0, 28),
+    BackgroundColor3 = C.PANEL, BorderSizePixel = 0, ZIndex = 3 }, Main)
+corner(statusBar, 8)
 stroke(statusBar, C.DEEP, 1)
-local statusDot = new("Frame", { Position = UDim2.fromOffset(12, 11), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.SUB,
+local statusDot = new("Frame", { Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.SUB,
     BorderSizePixel = 0, ZIndex = 4 }, statusBar)
 corner(statusDot, 4)
-local statusLbl = new("TextLabel", { Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -100, 1, 0), BackgroundTransparency = 1,
-    Text = "Idle", TextColor3 = C.SUB, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+local statusLbl = new("TextLabel", { Position = UDim2.fromOffset(24, 0), Size = UDim2.new(1, -96, 1, 0), BackgroundTransparency = 1,
+    Text = "Idle", TextColor3 = C.SUB, Font = Enum.Font.Gotham, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4 }, statusBar)
-local statsLbl = new("TextLabel", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 0), Size = UDim2.fromOffset(70, 30),
-    BackgroundTransparency = 1, Text = "Steal 0", TextColor3 = C.OR2, Font = Enum.Font.GothamBold, TextSize = 12,
+local statsLbl = new("TextLabel", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Size = UDim2.fromOffset(66, 28),
+    BackgroundTransparency = 1, Text = "Steal 0", TextColor3 = C.OR2, Font = Enum.Font.GothamBold, TextSize = 11,
     TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 4 }, statusBar)
 
 local logs = {}
@@ -381,25 +363,21 @@ local function setStatus(t)
     addLog("Status: " .. s)
 end
 
-local expanded = false
-local function setExpanded(v)
-    expanded = v
-    plusBtn.Text = v and "–" or "+"
-    if v then
-        quick.Visible = false
-        catArea.Visible = true
-        tw(Main, 0.4, { Size = UDim2.fromOffset(W, FULL_H) }, Enum.EasingStyle.Quint)
-    else
-        catArea.Visible = false
-        quick.Visible = true
-        tw(Main, 0.3, { Size = UDim2.fromOffset(W, MIN_H) }, Enum.EasingStyle.Quint)
-    end
+-- MINIMIZE & FLOATING ICON
+local minimized = false
+local function setMinimized(v)
+    minimized = v
+    minBtn.Text = v and "□" or "—"
+    tabBar.Visible = not v
+    contentWrap.Visible = not v
+    statusBar.Visible = not v
+    tw(Main, 0.25, { Size = UDim2.fromOffset(W, v and HEAD_H or FULL_H) }, Enum.EasingStyle.Quint)
 end
-plusBtn.Activated:Connect(function() setExpanded(not expanded) end)
+minBtn.Activated:Connect(function() setMinimized(not minimized) end)
 
-local floatBtn = new("ImageButton", { Size = UDim2.fromOffset(54, 54), Position = UDim2.new(0, 16, 0.5, -27), BackgroundColor3 = C.CARD,
+local floatBtn = new("ImageButton", { Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 16, 0.5, -26), BackgroundColor3 = C.CARD,
     Image = "rbxassetid://" .. ICON_ID, ScaleType = Enum.ScaleType.Fit, AutoButtonColor = false, Visible = false, ZIndex = 50 }, gui)
-corner(floatBtn, 27)
+corner(floatBtn, 26)
 stroke(floatBtn, C.OR, 2)
 do
     local dragging, moved, start, startPos
@@ -430,7 +408,12 @@ closeBtn.Activated:Connect(function()
     floatBtn.Visible = true
 end)
 
--- ISI KATEGORI
+-- TABS & CONTENT
+local stealBody   = addTab("Steal", 1)
+local configBody  = addTab("Config", 2)
+local settingBody = addTab("Setting", 3)
+local debugBody   = addTab("Debug", 4)
+
 addToggle(stealBody, "Auto Steal", "autosteal")
 addToggle(stealBody, "Reset Karakter dulu", "resetfirst")
 addToggle(stealBody, "No Scan My Base", "nobase")
@@ -438,15 +421,14 @@ addToggle(stealBody, "Hanya Base Musuh", "enemyonly")
 addToggle(stealBody, "Coba Loot Disabled", "trydisabled")
 addToggle(stealBody, "Speed Force", "speedforce")
 addLabel(stealBody, "Rarity Loot")
-addRarityBox(stealBody, "All", "all")
+local rarGrid = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 2 }, stealBody)
+new("UIGridLayout", { CellSize = UDim2.new(0.5, -3, 0, 30), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, rarGrid)
+addRarityBox(rarGrid, "All", "all")
 for _, k in ipairs(RARITIES) do
-    addRarityBox(stealBody, k:sub(1, 1):upper() .. k:sub(2), k)
+    addRarityBox(rarGrid, k:sub(1, 1):upper() .. k:sub(2), k)
 end
 
 addSlider(configBody, "Speed Force (WalkSpeed)", "speed", 16, 300)
-addSlider(configBody, "Speed ke Home (cepat)", "hi", 20, 200)
-addSlider(configBody, "Speed ke Home (pelan / tembok)", "lo", 10, 150)
-addSlider(configBody, "Naik tiap langkah (tembok)", "lift", 1, 10)
 local homeInfo = addLabel(configBody, "Home: belum terdeteksi")
 local btnScanHome = addButton(configBody, "Scan Home Sekarang", function() end)
 local btnSetHome = addButton(configBody, "Set Home = posisi saya", function() end)
@@ -485,11 +467,11 @@ addButton(debugBody, "Clear Log", function()
     statusLbl.Text = "Log dibersihkan"
 end)
 local logScroll = new("ScrollingFrame", {
-    Size = UDim2.new(1, 0, 0, 150), BackgroundColor3 = C.BG, BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 175), BackgroundColor3 = C.PANEL, BorderSizePixel = 0,
     ScrollBarThickness = 4, ScrollBarImageColor3 = C.OR,
     AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ZIndex = 3,
 }, debugBody)
-corner(logScroll, 10)
+corner(logScroll, 8)
 stroke(logScroll, C.DEEP, 1)
 pad(logScroll, 6, 6, 6, 6)
 logBox = new("TextBox", {
@@ -791,7 +773,6 @@ local function promptRoot(p)
     return nil
 end
 
--- Deteksi pemilik dari ancestor prompt (misal PlacedItems_<UserId>)
 local function promptOwner(p)
     local a = p.Parent
     while a and a ~= Workspace do
@@ -929,15 +910,16 @@ local function firePrompt(p, fallbackPos, tk)
         origDist = p.MaxActivationDistance
         origLos = p.RequiresLineOfSight
         p.RequiresLineOfSight = false
-        if p.MaxActivationDistance < 30 then p.MaxActivationDistance = 30 end
+        if p.MaxActivationDistance < 25 then p.MaxActivationDistance = 25 end
     end)
 
-    local function keepNear()
+    -- Hanya reposisi jika jauh agar tidak nyangkut / memicu anti-TP server saat hold
+    local function ensureNear()
         local hrp = root()
         if not hrp then return false end
         local ppos = promptPos(p) or fallbackPos
-        if ppos then
-            put(hrp, ppos + Vector3.new(0, 2.5, 0))
+        if ppos and (hrp.Position - ppos).Magnitude > 6 then
+            put(hrp, ppos + Vector3.new(0, 3.5, 0))
         end
         if p.Parent and p.Enabled then becameEnabled = true end
         return true
@@ -949,38 +931,37 @@ local function firePrompt(p, fallbackPos, tk)
         return false
     end
 
-    if not wasEnabled then
-        keepNear()
-        task.wait(0.15)
-    end
+    ensureNear()
+    if not wasEnabled then task.wait(0.2) end
 
-    if fireproximityprompt then
-        pcall(function() p.HoldDuration = 0 end)
-        for _ = 1, 5 do
-            if done() or not keepNear() then break end
+    if origHold <= 0.1 and fireproximityprompt then
+        for _ = 1, 3 do
+            if done() or not ensureNear() then break end
             pcall(fireproximityprompt, p)
             task.wait(0.15)
         end
     end
 
-    if not done() then
-        pcall(function() p.HoldDuration = origHold end)
-        if keepNear() then
-            pcall(function() p:InputHoldBegin() end)
-            local holdWait = math.max(origHold, 0.1) + 0.15
-            local t0 = os.clock()
-            while not done() and os.clock() - t0 < holdWait do
-                keepNear()
-                task.wait(0.05)
-            end
-            pcall(function() p:InputHoldEnd() end)
+    -- Gunakan hold asli agar server tidak menolak prompt dengan HoldDuration > 0
+    if not done() and ensureNear() then
+        pcall(function() p:InputHoldBegin() end)
+        local holdWait = math.max(origHold, 0.1) + 0.35
+        local t0 = os.clock()
+        while not done() and os.clock() - t0 < holdWait do
+            ensureNear()
+            task.wait(0.1)
         end
+        pcall(function() p:InputHoldEnd() end)
+    end
+
+    if not done() and fireproximityprompt and ensureNear() then
+        pcall(fireproximityprompt, p)
+        task.wait(0.15)
     end
 
     if trigConn then pcall(function() trigConn:Disconnect() end) end
     pcall(function()
         if p.Parent then
-            p.HoldDuration = origHold
             p.MaxActivationDistance = origDist
             p.RequiresLineOfSight = origLos
         end
@@ -1020,65 +1001,41 @@ local function wallAhead(origin, dir, dist)
     end
     return false
 end
-local function groundBelow(pos)
-    local ignore = { LP.Character }
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    for _ = 1, 4 do
-        params.FilterDescendantsInstances = ignore
-        local res = Workspace:Raycast(pos, Vector3.new(0, -600, 0), params)
-        if not res then return nil end
-        if res.Instance.CanCollide then return res.Position.Y end
-        table.insert(ignore, res.Instance)
-    end
-    return nil
-end
 
-local function forceHome(dest, tk)
-    local lifted = false
+-- Jalan normal ke home memakai Humanoid:MoveTo agar tidak rubberband
+local function walkHome(dest, tk)
     local t0 = os.clock()
+    local lastPos = root() and root().Position
+    local lastMove = os.clock()
+    local sideDir = 1
     while Flags.autosteal and tk == token and os.clock() - t0 < 45 do
         local hrp = root()
-        if not hrp then return false end
+        local h = hum()
+        if not hrp or not h then return false end
         local pos = hrp.Position
         local flat = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
-        local dist = flat.Magnitude
-        if dist < 5 then
-            local gy = groundBelow(pos)
-            if gy and pos.Y - gy > 4 then put(hrp, Vector3.new(pos.X, gy + 3, pos.Z)) end
-            return true
-        end
+        if flat.Magnitude < 6 then return true end
+
+        h:MoveTo(dest)
         local dir = flat.Unit
-        local dt = RunService.Heartbeat:Wait()
-        hrp = root()
-        if not hrp then return false end
-        pos = hrp.Position
-        local blocked = wallAhead(pos, dir, 6) or wallAhead(pos + Vector3.new(0, 3, 0), dir, 6)
-        local speed = Vals.hi
-        if blocked then
-            speed = Vals.lo
-            hrp.CFrame = hrp.CFrame + Vector3.new(0, Vals.lift, 0)
-            lifted = true
-        else
-            if lifted then
-                speed = Vals.lo
-                local gy = groundBelow(pos)
-                if gy and pos.Y - gy > 4 then
-                    local low = Vector3.new(pos.X, gy + 3, pos.Z)
-                    if not wallAhead(low, dir, 8) then
-                        hrp.CFrame = CFrame.new(low) * (hrp.CFrame - hrp.CFrame.Position)
-                        lifted = false
-                    end
-                else
-                    lifted = false
-                end
-            end
-            hrp.CFrame = hrp.CFrame + dir * math.min(speed * dt, dist)
+        if wallAhead(pos, dir, 4.5) then
+            h.Jump = true
         end
-        hrp.AssemblyLinearVelocity = Vector3.zero
+
+        if lastPos and (pos - lastPos).Magnitude > 1 then
+            lastPos = pos
+            lastMove = os.clock()
+        elseif os.clock() - lastMove > 0.9 then
+            h.Jump = true
+            local perp = Vector3.new(-dir.Z, 0, dir.X) * sideDir * 8
+            sideDir = -sideDir
+            h:MoveTo(pos + perp + dir * 4)
+            task.wait(0.4)
+            lastPos = root() and root().Position
+            lastMove = os.clock()
+        end
+        task.wait(0.25)
     end
-    local hrp = root()
-    if hrp and Flags.autosteal and tk == token then put(hrp, dest + Vector3.new(0, 3, 0)) end
     return false
 end
 
@@ -1113,14 +1070,9 @@ local function cycle(tk)
     local hrp = root()
     if not hrp then return end
     setStatus("TP ke loot: " .. loot.name)
-    local wt0 = os.clock()
-    while Flags.autosteal and tk == token and os.clock() - wt0 < Vals.wait do
-        hrp = root()
-        if not hrp then return end
-        local ppos = promptPos(loot.prompt) or loot.pos
-        put(hrp, ppos + Vector3.new(0, 2.5, 0))
-        task.wait(0.05)
-    end
+    local ppos = promptPos(loot.prompt) or loot.pos
+    put(hrp, ppos + Vector3.new(0, 3.5, 0))
+    task.wait(Vals.wait)
     if not Flags.autosteal or tk ~= token then return end
 
     setStatus("Curi: " .. loot.name)
@@ -1133,9 +1085,9 @@ local function cycle(tk)
         return
     end
 
-    setStatus("Gerak paksa ke home")
+    setStatus("Jalan pulang ke home...")
     local dest = homeDest()
-    if dest then forceHome(dest, tk) end
+    if dest then walkHome(dest, tk) end
     stolen += 1
     statsLbl.Text = "Steal " .. stolen
 end
